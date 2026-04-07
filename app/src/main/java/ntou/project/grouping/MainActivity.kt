@@ -1,6 +1,7 @@
 package ntou.project.grouping
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
 import ntou.project.grouping.ui.theme.GroupingTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,6 +37,22 @@ class MainActivity : ComponentActivity() {
                 GroupingApp()
             }
         }
+
+        val db = Firebase.firestore
+        val testData = hashMapOf(
+            "status" to "connected",
+            "location" to "NTOU", // 海大測試
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        db.collection("connection_test")
+            .add(testData)
+            .addOnSuccessListener { documentReference ->
+                Log.d("FirebaseTest", "成功連線！文件 ID: ${documentReference.id}")
+            }
+            .addOnFailureListener { e ->
+                Log.e("FirebaseTest", "連線失敗：", e)
+            }
     }
 }
 
