@@ -10,6 +10,15 @@ val Purple40 = Color(0xFF6650a4)
 val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
-val MainBlue = Color(0xFF1E88E5)
-val MainYellow = Color(0xFFFFC107)
-val TabUnselected = Color(0xFFBBDEFB)
+val PrimaryColor = Color(0xFF6C63FF) // 活力紫
+val SecondaryColor = Color(0xFFFF6584) // 浪漫粉
+val AccentColor = Color(0xFFFFD166) // 暖陽金
+val BackgroundColor = Color(0xFFF8F9FA) // 極簡灰白
+val SurfaceColor = Color(0xFFFFFFFF)
+val TextPrimary = Color(0xFF2D3436)
+val TextSecondary = Color(0xFF636E72)
+val TabUnselected = Color(0xFFADBAC7)
+
+// 保持舊的以相容，但標註為過時或逐步替換
+val MainBlue = PrimaryColor
+val MainYellow = AccentColor
