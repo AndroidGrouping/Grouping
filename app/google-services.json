@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "672360197151",
+    "project_id": "gouping-ntou",
+    "storage_bucket": "gouping-ntou.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672360197151:android:015f1154a4d74c7028f92a",
+        "android_client_info": {
+          "package_name": "ntou.project.grouping"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEaaL2yZk8eyuHj8Yq0qUHATZQDBRzwQw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
