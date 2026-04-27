@@ -5,6 +5,14 @@ plugins {
 }
 
 android {
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("C:\\Users\\Jackie\\AndroidStudioProjects\\Grouping\\signedKey")
+            storePassword = "940502"
+            keyAlias = "key0"
+            keyPassword = "940502"
+        }
+    }
     namespace = "ntou.project.grouping"
     compileSdk {
         version = release(36) {
