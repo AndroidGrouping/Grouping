@@ -7,7 +7,7 @@ plugins {
 android {
     signingConfigs {
         getByName("debug") {
-            storeFile = file("C:\\Users\\Jackie\\AndroidStudioProjects\\Grouping\\signedKey")
+            storeFile = file("../signedKey")
             storePassword = "940502"
             keyAlias = "key0"
             keyPassword = "940502"
