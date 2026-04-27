@@ -12,7 +12,20 @@
           "package_name": "ntou.project.grouping"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "672360197151-pku01v5p532275rtamvn9eq1t5836ch7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ntou.project.grouping",
+            "certificate_hash": "8e10e9ebaa7b0f910ce0aeaeaca74365927f65c1"
+          }
+        },
+        {
+          "client_id": "672360197151-cr3a2k3velqujvush6rlak7jkfcl38ot.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCEaaL2yZk8eyuHj8Yq0qUHATZQDBRzwQw"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "672360197151-cr3a2k3velqujvush6rlak7jkfcl38ot.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
