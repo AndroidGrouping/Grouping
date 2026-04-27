@@ -12,6 +12,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
+import ntou.project.grouping.components.BottomNavigationBar
+import ntou.project.grouping.components.TopNavigationBar
+import ntou.project.grouping.pages.chat.ChatPage
+import ntou.project.grouping.pages.home.HomePage
+import ntou.project.grouping.pages.NewPostPage
+import ntou.project.grouping.pages.search.SearchPage
+import ntou.project.grouping.pages.user.UserPage
 import ntou.project.grouping.ui.theme.GroupingTheme
 
 class MainActivity : ComponentActivity() {

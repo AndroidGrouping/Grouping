@@ -1,4 +1,4 @@
-package ntou.project.grouping
+package ntou.project.grouping.pages.user
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,13 +10,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
 @Composable
-fun ChatPage(paddingValues: PaddingValues) {
+fun UserPage(paddingValues: PaddingValues) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "訊息 (Chat Page)")
+        Text(text = "個人 (User Page)")
     }
 }
