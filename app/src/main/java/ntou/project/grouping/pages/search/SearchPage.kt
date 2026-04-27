@@ -1,4 +1,4 @@
-package ntou.project.grouping
+package ntou.project.grouping.pages.search
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,13 +10,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
 @Composable
-fun NewPostPage(paddingValues: PaddingValues) {
+fun SearchPage(paddingValues: PaddingValues) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "新增貼文 (New Post Page)")
+        Text(text = "搜尋 (Search Page)")
     }
 }

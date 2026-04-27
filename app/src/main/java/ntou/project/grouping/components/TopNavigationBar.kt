@@ -1,4 +1,4 @@
-package ntou.project.grouping
+package ntou.project.grouping.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
