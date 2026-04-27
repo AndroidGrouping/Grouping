@@ -5,6 +5,14 @@ plugins {
 }
 
 android {
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../signedKey")
+            storePassword = "940502"
+            keyAlias = "key0"
+            keyPassword = "940502"
+        }
+    }
     namespace = "ntou.project.grouping"
     compileSdk {
         version = release(36) {
@@ -55,6 +63,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
+    implementation("com.google.maps.android:maps-compose:4.4.1")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
