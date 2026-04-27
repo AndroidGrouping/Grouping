@@ -11,6 +11,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Grouping">
+
+        <!-- 請在此處填入你的 Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -18,7 +24,6 @@
             android:theme="@style/Theme.Grouping">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
