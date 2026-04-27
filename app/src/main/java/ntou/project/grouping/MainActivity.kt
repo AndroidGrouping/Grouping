@@ -69,15 +69,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen() {
-    var selectedTopTab by remember { mutableStateOf("新到者") }
     var selectedBottomTab by remember { mutableStateOf("Home") }
 
     Scaffold(
         topBar = {
-            TopNavigationBar(
-                selectedTab = selectedTopTab,
-                onTabSelected = { selectedTopTab = it }
-            )
+            TopNavigationBar()
         },
         bottomBar = {
             BottomNavigationBar(
@@ -87,13 +83,11 @@ fun MainScreen() {
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        // 僅使用頂部的 Padding，底部讓列表自行控制，實現活動穿透導覽列的效果
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            // 模擬活動列表
             val mockEvents = listOf(
                 Event("週末羽球局", "中正體育館", "14:00", "活力運動"),
                 Event("桌遊之夜：狼人殺", "台北車站咖啡廳", "19:00", "休閒娛樂"),
@@ -104,7 +98,6 @@ fun MainScreen() {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                // 底部留出 100.dp 空間，確保最後一項不會被懸浮 Bar 擋住
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -201,53 +194,27 @@ fun EventCard(event: Event) {
 }
 
 @Composable
-fun TopNavigationBar(
-    selectedTab: String,
-    onTabSelected: (String) -> Unit
-) {
-    val tabs = listOf("即將開始", "新到者", "在我附近", "追蹤動態")
+fun TopNavigationBar() {
     Surface(
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.fillMaxWidth().shadow(4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp),
         tonalElevation = 4.dp
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .padding(top = 56.dp)
-                .fillMaxWidth()
+                .padding(top = 56.dp, bottom = 16.dp)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                tabs.forEach { tab ->
-                    val isSelected = selectedTab == tab
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clickable { onTabSelected(tab) }
-                            .padding(vertical = 12.dp, horizontal = 8.dp)
-                    ) {
-                        Text(
-                            text = tab,
-                            color = if (isSelected) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.7f),
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
-                        )
-                        
-                        Spacer(modifier = Modifier.height(6.dp))
-                        
-                        Box(
-                            modifier = Modifier
-                                .size(width = 32.dp, height = 3.dp)
-                                .background(if (isSelected) MaterialTheme.colorScheme.tertiary else Color.Transparent)
-                        )
-                    }
-                }
-            }
+            Text(
+                text = "Grouping",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.sp
+            )
         }
     }
 }
@@ -257,7 +224,6 @@ fun BottomNavigationBar(
     selectedItem: String,
     onItemSelected: (String) -> Unit
 ) {
-    // 使用 Box 包裝並加入 padding 讓它懸浮
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,7 +231,6 @@ fun BottomNavigationBar(
             .height(72.dp),
         contentAlignment = Alignment.Center
     ) {
-        // 懸浮膠囊背景 (不再填滿寬度)
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
             shape = RoundedCornerShape(36.dp),
@@ -286,7 +251,6 @@ fun BottomNavigationBar(
                     onItemSelected("Notifications")
                 }
 
-                // 為中間的 FAB 留出空間
                 Spacer(modifier = Modifier.size(56.dp))
 
                 BottomNavItem(Icons.Default.Email, "訊息", selectedItem == "Messages") {
@@ -298,7 +262,6 @@ fun BottomNavigationBar(
             }
         }
 
-        // 中間的圓形加號按鈕，直接放在正中央並輕微上移
         Box(
             modifier = Modifier
                 .offset(y = (-4).dp)
