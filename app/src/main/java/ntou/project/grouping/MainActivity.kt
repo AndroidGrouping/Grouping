@@ -10,13 +10,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
+import com.google.firebase.auth.FirebaseAuth
 import ntou.project.grouping.components.BottomNavigationBar
 import ntou.project.grouping.components.TopNavigationBar
 import ntou.project.grouping.pages.chat.ChatPage
 import ntou.project.grouping.pages.home.HomePage
 import ntou.project.grouping.pages.NewPostPage
+import ntou.project.grouping.pages.auth.LoginPage
 import ntou.project.grouping.pages.search.SearchPage
 import ntou.project.grouping.pages.user.UserPage
 import ntou.project.grouping.ui.theme.GroupingTheme
@@ -27,7 +32,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GroupingTheme {
-                MainScreen()
+                var isLoggedIn by remember { 
+                    mutableStateOf(FirebaseAuth.getInstance().currentUser != null) 
+                }
+
+                if (isLoggedIn) {
+                    MainScreen()
+                } else {
+                    LoginPage(onLoginSuccess = { isLoggedIn = true })
+                }
             }
         }
     }
