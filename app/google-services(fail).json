@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "672360197151-v1020haeog31ng03e88t25t3c997i2tr.apps.googleusercontent.com",
+          "client_id": "672360197151-pku01v5p532275rtamvn9eq1t5836ch7.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "ntou.project.grouping",
-            "certificate_hash": "730089d7dd6dfd9ed5a4d73cb123113155df0077"
+            "certificate_hash": "8e10e9ebaa7b0f910ce0aeaeaca74365927f65c1"
           }
         },
         {
