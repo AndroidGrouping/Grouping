@@ -1,6 +1,7 @@
 package ntou.project.grouping.pages.auth
 
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -36,12 +37,16 @@ fun LoginPage(onLoginSuccess: () -> Unit) {
                 if (task.isSuccessful) {
                     onLoginSuccess()
                 } else {
-                    Log.e("LoginPage", "Firebase sign in failed", task.exception)
+                    Toast.makeText(context, "Firebase 登入失敗: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                 }
             }
+        } catch (e: ApiException) {
+            isLoading = false
+            Toast.makeText(context, "Google 登入失敗 (代碼 ${e.statusCode})", Toast.LENGTH_LONG).show()
+            Log.e("LoginPage", "Google sign in failed: ${e.statusCode}")
         } catch (e: Exception) {
             isLoading = false
-            Log.e("LoginPage", "Google sign in failed: ${e.message}")
+            Toast.makeText(context, "發生錯誤: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
