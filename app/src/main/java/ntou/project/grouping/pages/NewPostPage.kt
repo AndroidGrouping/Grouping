@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,7 +82,6 @@ fun NewPostPage(paddingValues: PaddingValues) {
         )
     }
 
-    // --- 主介面表單 ---
     Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp).verticalScroll(rememberScrollState())) {
         Text(text = "建立新活動", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(20.dp))
@@ -88,12 +89,12 @@ fun NewPostPage(paddingValues: PaddingValues) {
         OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("活動標題") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 地點按鈕
+        // 地點欄位
         Card(
             onClick = { showMapPicker = true },
-            modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp)),
+            modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
         ) {
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red, modifier = Modifier.size(32.dp))
@@ -103,7 +104,7 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     if (selectedFullAddress.isNotBlank()) {
                         Text(text = selectedFullAddress, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
                     } else {
-                        Text(text = "點擊開啟地圖選擇地點", fontSize = 12.sp, color = Color.LightGray)
+                        Text(text = "點擊開啟地圖選擇地點", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
@@ -177,7 +178,7 @@ fun NewPostPage(paddingValues: PaddingValues) {
     }
 }
 
-// --- 地點選擇專用對話框組件 ---
+// --- 大重構：地點選擇專用對話框組件 ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationPickerDialog(
@@ -191,16 +192,18 @@ fun LocationPickerDialog(
 
     var currentLatLng by remember { mutableStateOf(initialLatLng) }
     var currentName by remember { mutableStateOf("未命名位置") }
-    var currentAddress by remember { mutableStateOf("請在地圖上點擊或搜尋") }
+    var currentAddress by remember { mutableStateOf("請選擇地點") }
     
     var searchQuery by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf(listOf<Address>()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
+    var isSearching by remember { mutableStateOf(false) }
     
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialLatLng, 16f)
     }
 
+    // 核心資訊抓取函數
     fun updateInfo(latLng: LatLng, overrideName: String? = null) {
         currentLatLng = latLng
         scope.launch(Dispatchers.IO) {
@@ -215,20 +218,17 @@ fun LocationPickerDialog(
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    currentName = overrideName ?: "已選取地點"
+                    currentName = overrideName ?: "選定地點"
                     currentAddress = "${latLng.latitude}, ${latLng.longitude}"
                 }
             }
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
             topBar = {
-                Surface(modifier = Modifier.fillMaxWidth().shadow(8.dp)) {
+                Surface(tonalElevation = 4.dp, shadowElevation = 8.dp) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
@@ -237,21 +237,37 @@ fun LocationPickerDialog(
                                 onValueChange = { 
                                     searchQuery = it
                                     searchJob?.cancel()
+                                    if (it.length < 2) { suggestions = emptyList(); return@OutlinedTextField }
+                                    
+                                    isSearching = true
                                     searchJob = scope.launch(Dispatchers.IO) {
                                         delay(400)
-                                        if (it.length >= 2) {
+                                        try {
+                                            // --- 加入經緯度偏差，優先搜尋地圖中心附近的店 ---
+                                            val mapCenter = cameraPositionState.position.target
                                             @Suppress("DEPRECATION")
-                                            val results = geocoder.getFromLocationName(it, 10)
-                                            withContext(Dispatchers.Main) { suggestions = results ?: emptyList() }
-                                        } else {
-                                            withContext(Dispatchers.Main) { suggestions = emptyList() }
+                                            val results = geocoder.getFromLocationName(
+                                                it, 10,
+                                                mapCenter.latitude - 0.2, mapCenter.longitude - 0.2,
+                                                mapCenter.latitude + 0.2, mapCenter.longitude + 0.2
+                                            )
+                                            withContext(Dispatchers.Main) {
+                                                suggestions = results ?: emptyList()
+                                                isSearching = false
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) { isSearching = false }
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f).background(Color.White, CircleShape),
-                                placeholder = { Text("搜尋店名、地址、景點...") },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("搜尋店名或地址" +
+                                        "") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = ""; suggestions = emptyList() }) { Icon(Icons.Default.Clear, contentDescription = null) } },
+                                trailingIcon = {
+                                    if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    else if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = ""; suggestions = emptyList() }) { Icon(Icons.Default.Clear, contentDescription = null) }
+                                },
                                 singleLine = true,
                                 shape = CircleShape
                             )
@@ -261,46 +277,47 @@ fun LocationPickerDialog(
             }
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                // --- 地圖主體 ---
                 GoogleMap(
                     modifier = Modifier.fillMaxSize(),
                     cameraPositionState = cameraPositionState,
-                    onMapClick = { latLng ->
-                        updateInfo(latLng)
-                        suggestions = emptyList()
-                    },
-                    onPOIClick = { poi ->
-                        updateInfo(poi.latLng, poi.name)
-                        suggestions = emptyList()
-                    },
+                    onMapClick = { latLng -> updateInfo(latLng); suggestions = emptyList() },
+                    onPOIClick = { poi -> updateInfo(poi.latLng, poi.name); suggestions = emptyList() },
                     uiSettings = MapUiSettings(zoomControlsEnabled = false)
                 ) {
                     Marker(state = MarkerState(position = currentLatLng))
                 }
 
-                // --- 搜尋建議 (覆蓋在地圖上) ---
+                // --- 全螢幕搜尋建議 ---
                 AnimatedVisibility(
-                    visible = suggestions.isNotEmpty(),
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+                    visible = suggestions.isNotEmpty() || (searchQuery.length >= 2 && !isSearching && suggestions.isEmpty()),
+                    enter = fadeIn(), exit = fadeOut()
                 ) {
-                    Surface(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.9f))) {
-                        LazyColumn {
-                            items(suggestions) { addr ->
-                                val name = addr.featureName ?: addr.getAddressLine(0)
-                                ListItem(
-                                    headlineContent = { Text(name, fontWeight = FontWeight.Bold) },
-                                    supportingContent = { Text(addr.getAddressLine(0), fontSize = 12.sp, color = Color.Gray) },
-                                    leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                    modifier = Modifier.clickable {
-                                        val target = LatLng(addr.latitude, addr.longitude)
-                                        updateInfo(target, addr.featureName)
-                                        suggestions = emptyList()
-                                        searchQuery = ""
-                                        scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
-                                    }
-                                )
-                                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+                    Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) {
+                        if (suggestions.isEmpty() && !isSearching) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(64.dp))
+                                    Text("找不到相關地點", color = Color.Gray)
+                                    Text("請輸入更詳細的名稱 (例如: 基隆 麥當勞)", fontSize = 12.sp, color = Color.LightGray)
+                                }
+                            }
+                        } else {
+                            LazyColumn {
+                                items(suggestions) { addr ->
+                                    val name = addr.featureName ?: addr.getAddressLine(0)
+                                    ListItem(
+                                        headlineContent = { Text(name, fontWeight = FontWeight.Bold) },
+                                        supportingContent = { Text(addr.getAddressLine(0), fontSize = 12.sp, color = Color.Gray, maxLines = 2) },
+                                        leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                        modifier = Modifier.clickable {
+                                            val target = LatLng(addr.latitude, addr.longitude)
+                                            updateInfo(target, addr.featureName)
+                                            suggestions = emptyList(); searchQuery = ""
+                                            scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
+                                        }
+                                    )
+                                    HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+                                }
                             }
                         }
                     }
@@ -313,21 +330,17 @@ fun LocationPickerDialog(
                     colors = CardDefaults.cardColors(containerColor = Color.White)
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "選取的地點", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "選取的地點", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(text = currentName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
                         Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = Color.Gray, maxLines = 2, lineHeight = 18.sp)
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { onLocationConfirm(currentLatLng, currentName, currentAddress) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("確認選取此地點", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("就選這裡", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
