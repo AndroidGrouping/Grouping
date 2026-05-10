@@ -1,36 +1,48 @@
 package ntou.project.grouping.pages
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.location.Address
+import android.location.Geocoder
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import com.google.android.gms.location.LocationServices
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.maps.android.compose.*
 import ntou.project.grouping.models.Post
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -40,232 +52,286 @@ fun NewPostPage(paddingValues: PaddingValues) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
-    
-    // 使用 remember 來保存 client，避免重複建立
-    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
+    // --- 最終選定的地點資訊 ---
+    var selectedLatLng by remember { mutableStateOf(LatLng(25.1502, 121.7761)) }
+    var selectedPlaceName by remember { mutableStateOf("點擊選取活動位置") }
+    var selectedFullAddress by remember { mutableStateOf("") }
+
+    // --- 其他表單狀態 ---
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var maxParticipants by remember { mutableStateOf("") }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var isPosting by remember { mutableStateOf(false) }
-    
-    var eventTime by remember { mutableStateOf("") } 
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showTimePicker by remember { mutableStateOf(false) }
-    val calendar = remember { Calendar.getInstance() }
-    
-    val datePickerState = rememberDatePickerState()
-    val timePickerState = rememberTimePickerState(
-        initialHour = calendar.get(Calendar.HOUR_OF_DAY),
-        initialMinute = calendar.get(Calendar.MINUTE)
-    )
+    var eventTime by remember { mutableStateOf("") }
+    var showMapPicker by remember { mutableStateOf(false) }
 
-    var latitude by remember { mutableDoubleStateOf(0.0) }
-    var longitude by remember { mutableDoubleStateOf(0.0) }
-    var locationName by remember { mutableStateOf("未標記位置") }
-
-    val allTags = listOf("羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
-
-    // 獲取位置的穩定版函數
-    fun tryGetLocation() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    latitude = location.latitude
-                    longitude = location.longitude
-                    locationName = "已標記目前位置"
-                } else {
-                    locationName = "抓不到 GPS，請開地圖試試"
-                }
-            }.addOnFailureListener {
-                locationName = "定位失敗"
-            }
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) tryGetLocation()
-    }
-
-    // --- 日期與時間選擇器邏輯 ---
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let {
-                        calendar.timeInMillis = it
-                        showDatePicker = false
-                        showTimePicker = true 
-                    }
-                }) { Text("下一步") }
-            }
-        ) { DatePicker(state = datePickerState) }
-    }
-
-    if (showTimePicker) {
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-                    calendar.set(Calendar.MINUTE, timePickerState.minute)
-                    val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
-                    eventTime = sdf.format(calendar.time)
-                    showTimePicker = false
-                }) { Text("確定") }
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("選擇活動時間")
-                    TimePicker(state = timePickerState)
-                }
+    if (showMapPicker) {
+        LocationPickerDialog(
+            initialLatLng = selectedLatLng,
+            onDismiss = { showMapPicker = false },
+            onLocationConfirm = { latLng, name, addr ->
+                selectedLatLng = latLng
+                selectedPlaceName = name
+                selectedFullAddress = addr
+                showMapPicker = false
             }
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Text(text = "建立新貼文", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+    // --- 主介面表單 ---
+    Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp).verticalScroll(rememberScrollState())) {
+        Text(text = "建立新活動", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(20.dp))
+
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("活動標題") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("貼文標題") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = eventTime,
-            onValueChange = { },
-            label = { Text("活動時間") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showDatePicker = true },
-            enabled = false, 
-            colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                disabledBorderColor = MaterialTheme.colorScheme.outline,
-                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-            ),
-            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) }
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = maxParticipants,
-            onValueChange = { if (it.all { char -> char.isDigit() }) maxParticipants = it },
-            label = { Text("人數上限 (0 代表不限)") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = content,
-            onValueChange = { content = it },
-            label = { Text("貼文內容") },
-            modifier = Modifier.fillMaxWidth().height(120.dp)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // --- 點擊此行才觸發定位，避免一進來就閃退 ---
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable { 
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    tryGetLocation()
-                } else {
-                    permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                }
-            },
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(8.dp)
+        // 地點按鈕
+        Card(
+            onClick = { showMapPicker = true },
+            modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = if (locationName == "未標記位置") "點擊獲取目前位置" else locationName)
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red, modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    if (selectedFullAddress.isNotBlank()) {
+                        Text(text = selectedFullAddress, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
+                    } else {
+                        Text(text = "點擊開啟地圖選擇地點", fontSize = 12.sp, color = Color.LightGray)
+                    }
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        Text(text = "選擇標籤", fontWeight = FontWeight.Medium)
-        Spacer(modifier = Modifier.height(8.dp))
         
-        LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(allTags) { tag ->
-                val isSelected = selectedTags.contains(tag)
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag },
-                    label = { Text(tag) }
-                )
-            }
+        val calendar = remember { Calendar.getInstance() }
+        val datePickerState = rememberDatePickerState()
+        val timePickerState = rememberTimePickerState()
+        var showDatePicker by remember { mutableStateOf(false) }
+        var showTimePicker by remember { mutableStateOf(false) }
+        if (showDatePicker) {
+            DatePickerDialog(onDismissRequest = { showDatePicker = false }, confirmButton = {
+                TextButton(onClick = { calendar.timeInMillis = datePickerState.selectedDateMillis ?: 0L; showDatePicker = false; showTimePicker = true }) { Text("下一步") }
+            }) { DatePicker(state = datePickerState) }
+        }
+        if (showTimePicker) {
+            AlertDialog(onDismissRequest = { showTimePicker = false }, confirmButton = {
+                TextButton(onClick = {
+                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour); calendar.set(Calendar.MINUTE, timePickerState.minute)
+                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(calendar.time); showTimePicker = false
+                }) { Text("確定") }
+            }, text = { Column { Text("選擇活動時間", fontWeight = FontWeight.Bold); TimePicker(state = timePickerState) } })
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
+        OutlinedTextField(value = eventTime, onValueChange = { }, label = { Text("活動時間") }, modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline), leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) }, shape = RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = maxParticipants, onValueChange = { if (it.all { it.isDigit() }) maxParticipants = it }, label = { Text("人數上限 (0 代表不限)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("詳細內容") }, modifier = Modifier.fillMaxWidth().height(120.dp), shape = RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(text = "選擇標籤", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val categories = listOf("羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
+            items(categories) { tag ->
+                FilterChip(selected = selectedTags.contains(tag), onClick = { selectedTags = if (selectedTags.contains(tag)) selectedTags - tag else selectedTags + tag }, label = { Text(tag) })
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = {
                 val user = auth.currentUser
-                if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank()) {
+                if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank() || selectedFullAddress.isBlank()) {
                     Toast.makeText(context, "請完整填寫資訊", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
-
                 isPosting = true
                 val post = Post(
-                    title = title,
-                    content = content,
-                    authorId = user.uid,
-                    authorName = user.displayName ?: "匿名用戶",
-                    tags = selectedTags.toList(),
-                    latitude = latitude,
-                    longitude = longitude,
-                    locationName = locationName,
-                    eventTime = eventTime,
-                    maxParticipants = maxParticipants.toIntOrNull() ?: 0
+                    title = title, content = content, authorId = user.uid, authorName = user.displayName ?: "匿名用戶",
+                    tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
+                    locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
+                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0
                 )
-
-                db.collection("posts").add(post)
-                    .addOnSuccessListener {
-                        isPosting = false
-                        Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
-                        title = ""
-                        content = ""
-                        eventTime = ""
-                        maxParticipants = ""
-                        selectedTags = emptySet()
-                    }
-                    .addOnFailureListener { e ->
-                        isPosting = false
-                        Toast.makeText(context, "發布失敗", Toast.LENGTH_SHORT).show()
-                    }
+                db.collection("posts").add(post).addOnSuccessListener {
+                    isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
+                    title = ""; content = ""; eventTime = ""; maxParticipants = ""; selectedTags = emptySet()
+                    selectedPlaceName = "點擊選取活動位置"; selectedFullAddress = ""
+                }.addOnFailureListener { isPosting = false }
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(12.dp),
             enabled = !isPosting
         ) {
-            if (isPosting) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Text("發布貼文")
+            if (isPosting) CircularProgressIndicator(color = Color.White) else Text("確認發布", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// --- 地點選擇專用對話框組件 ---
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocationPickerDialog(
+    initialLatLng: LatLng,
+    onDismiss: () -> Unit,
+    onLocationConfirm: (LatLng, String, String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val geocoder = remember { Geocoder(context, Locale.getDefault()) }
+
+    var currentLatLng by remember { mutableStateOf(initialLatLng) }
+    var currentName by remember { mutableStateOf("未命名位置") }
+    var currentAddress by remember { mutableStateOf("請在地圖上點擊或搜尋") }
+    
+    var searchQuery by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf(listOf<Address>()) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+    
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(initialLatLng, 16f)
+    }
+
+    fun updateInfo(latLng: LatLng, overrideName: String? = null) {
+        currentLatLng = latLng
+        scope.launch(Dispatchers.IO) {
+            try {
+                val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
+                withContext(Dispatchers.Main) {
+                    if (!addresses.isNullOrEmpty()) {
+                        val addr = addresses[0]
+                        currentName = overrideName ?: addr.featureName ?: addr.thoroughfare ?: "未知地點"
+                        currentAddress = addr.getAddressLine(0) ?: ""
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    currentName = overrideName ?: "已選取地點"
+                    currentAddress = "${latLng.latitude}, ${latLng.longitude}"
+                }
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Scaffold(
+            topBar = {
+                Surface(modifier = Modifier.fillMaxWidth().shadow(8.dp)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { 
+                                    searchQuery = it
+                                    searchJob?.cancel()
+                                    searchJob = scope.launch(Dispatchers.IO) {
+                                        delay(400)
+                                        if (it.length >= 2) {
+                                            @Suppress("DEPRECATION")
+                                            val results = geocoder.getFromLocationName(it, 10)
+                                            withContext(Dispatchers.Main) { suggestions = results ?: emptyList() }
+                                        } else {
+                                            withContext(Dispatchers.Main) { suggestions = emptyList() }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).background(Color.White, CircleShape),
+                                placeholder = { Text("搜尋店名、地址、景點...") },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = ""; suggestions = emptyList() }) { Icon(Icons.Default.Clear, contentDescription = null) } },
+                                singleLine = true,
+                                shape = CircleShape
+                            )
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                // --- 地圖主體 ---
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    onMapClick = { latLng ->
+                        updateInfo(latLng)
+                        suggestions = emptyList()
+                    },
+                    onPOIClick = { poi ->
+                        updateInfo(poi.latLng, poi.name)
+                        suggestions = emptyList()
+                    },
+                    uiSettings = MapUiSettings(zoomControlsEnabled = false)
+                ) {
+                    Marker(state = MarkerState(position = currentLatLng))
+                }
+
+                // --- 搜尋建議 (覆蓋在地圖上) ---
+                AnimatedVisibility(
+                    visible = suggestions.isNotEmpty(),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.9f))) {
+                        LazyColumn {
+                            items(suggestions) { addr ->
+                                val name = addr.featureName ?: addr.getAddressLine(0)
+                                ListItem(
+                                    headlineContent = { Text(name, fontWeight = FontWeight.Bold) },
+                                    supportingContent = { Text(addr.getAddressLine(0), fontSize = 12.sp, color = Color.Gray) },
+                                    leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    modifier = Modifier.clickable {
+                                        val target = LatLng(addr.latitude, addr.longitude)
+                                        updateInfo(target, addr.featureName)
+                                        suggestions = emptyList()
+                                        searchQuery = ""
+                                        scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
+                                    }
+                                )
+                                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+                            }
+                        }
+                    }
+                }
+
+                // --- 底部確認面板 ---
+                Card(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth().shadow(12.dp, RoundedCornerShape(20.dp)),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "選取的地點", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = currentName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                        Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = Color.Gray, maxLines = 2, lineHeight = 18.sp)
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = { onLocationConfirm(currentLatLng, currentName, currentAddress) },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("確認選取此地點", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    }
+                }
+            }
         }
     }
 }
