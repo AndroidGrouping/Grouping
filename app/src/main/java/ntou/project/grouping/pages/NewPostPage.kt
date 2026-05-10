@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -39,17 +40,16 @@ fun NewPostPage(paddingValues: PaddingValues) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
-    val fusedLocationClient = remember {
-        LocationServices.getFusedLocationProviderClient(context) 
-    }
+    
+    // 使用 remember 來保存 client，避免重複建立
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
-    var maxParticipants by remember { mutableStateOf("") } // 人數上限狀態
+    var maxParticipants by remember { mutableStateOf("") }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var isPosting by remember { mutableStateOf(false) }
     
-    // --- 時間相關狀態 ---
     var eventTime by remember { mutableStateOf("") } 
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -61,22 +61,25 @@ fun NewPostPage(paddingValues: PaddingValues) {
         initialMinute = calendar.get(Calendar.MINUTE)
     )
 
-    // --- 位置相關狀態 ---
     var latitude by remember { mutableDoubleStateOf(0.0) }
     var longitude by remember { mutableDoubleStateOf(0.0) }
-    var locationName by remember { mutableStateOf("正在獲取位置...") }
+    var locationName by remember { mutableStateOf("未標記位置") }
 
     val allTags = listOf("羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
 
-    // 獲取位置函數
-    fun fetchLocation() {
+    // 獲取位置的穩定版函數
+    fun tryGetLocation() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
                     latitude = location.latitude
                     longitude = location.longitude
-                    locationName = "已標記當前位置"
+                    locationName = "已標記目前位置"
+                } else {
+                    locationName = "抓不到 GPS，請開地圖試試"
                 }
+            }.addOnFailureListener {
+                locationName = "定位失敗"
             }
         }
     }
@@ -84,19 +87,10 @@ fun NewPostPage(paddingValues: PaddingValues) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) fetchLocation()
-        else locationName = "未授權定位權限"
+        if (isGranted) tryGetLocation()
     }
 
-    LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fetchLocation()
-        } else {
-            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-    }
-
-    // --- 日期選擇器對話框 ---
+    // --- 日期與時間選擇器邏輯 ---
     if (showDatePicker) {
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -105,16 +99,13 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     datePickerState.selectedDateMillis?.let {
                         calendar.timeInMillis = it
                         showDatePicker = false
-                        showTimePicker = true // 選完日期接著選時間
+                        showTimePicker = true 
                     }
                 }) { Text("下一步") }
             }
-        ) {
-            DatePicker(state = datePickerState)
-        }
+        ) { DatePicker(state = datePickerState) }
     }
 
-    // --- 時間選擇器對話框 ---
     if (showTimePicker) {
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
@@ -129,7 +120,7 @@ fun NewPostPage(paddingValues: PaddingValues) {
             },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("選擇活動時間", modifier = Modifier.padding(bottom = 16.dp))
+                    Text("選擇活動時間")
                     TimePicker(state = timePickerState)
                 }
             }
@@ -156,7 +147,6 @@ fun NewPostPage(paddingValues: PaddingValues) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 活動時間選擇欄位 ---
         OutlinedTextField(
             value = eventTime,
             onValueChange = { },
@@ -164,23 +154,21 @@ fun NewPostPage(paddingValues: PaddingValues) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showDatePicker = true },
-            enabled = false, // 禁止手動打字
+            enabled = false, 
             colors = OutlinedTextFieldDefaults.colors(
                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
                 disabledBorderColor = MaterialTheme.colorScheme.outline,
                 disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
             ),
-            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-            placeholder = { Text("點擊選擇日期與時間") }
+            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 人數上限輸入 ---
         OutlinedTextField(
             value = maxParticipants,
             onValueChange = { if (it.all { char -> char.isDigit() }) maxParticipants = it },
-            label = { Text("人數上限 (0 或不填代表不限)") },
+            label = { Text("人數上限 (0 代表不限)") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true
@@ -192,46 +180,56 @@ fun NewPostPage(paddingValues: PaddingValues) {
             value = content,
             onValueChange = { content = it },
             label = { Text("貼文內容") },
-            modifier = Modifier.fillMaxWidth().height(150.dp),
-            maxLines = 10
+            modifier = Modifier.fillMaxWidth().height(120.dp)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = locationName, fontSize = 14.sp, color = Color.Gray)
+        // --- 點擊此行才觸發定位，避免一進來就閃退 ---
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { 
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    tryGetLocation()
+                } else {
+                    permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+            },
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = if (locationName == "未標記位置") "點擊獲取目前位置" else locationName)
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(text = "選擇標籤 (可多選)", fontWeight = FontWeight.Medium)
+        Text(text = "選擇標籤", fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(8.dp))
         
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(allTags) { tag ->
                 val isSelected = selectedTags.contains(tag)
                 FilterChip(
                     selected = isSelected,
-                    onClick = {
-                        selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
-                    },
+                    onClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag },
                     label = { Text(tag) }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
                 val user = auth.currentUser
                 if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank()) {
-                    Toast.makeText(context, "請完整填寫所有資訊", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "請完整填寫資訊", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
 
@@ -261,17 +259,13 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     }
                     .addOnFailureListener { e ->
                         isPosting = false
-                        Toast.makeText(context, "發布失敗：${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "發布失敗", Toast.LENGTH_SHORT).show()
                     }
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isPosting
         ) {
-            if (isPosting) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-            } else {
-                Text("發布貼文")
-            }
+            if (isPosting) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Text("發布貼文")
         }
     }
 }
