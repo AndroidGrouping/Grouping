@@ -8,6 +8,7 @@ data class Post(
     val content: String = "",
     val authorId: String = "",
     val authorName: String = "",
+    val authorAvatarUrl: String = "", // 新增：發布者大頭貼 URL
     val tags: List<String> = emptyList(),
     val timestamp: Timestamp = Timestamp.now(),
     val latitude: Double = 0.0,
