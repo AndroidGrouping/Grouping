@@ -16,7 +16,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Grouping">
 
-        <!-- 請在此處填入你的 Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA" />

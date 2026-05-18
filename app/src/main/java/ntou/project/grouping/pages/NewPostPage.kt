@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,7 +27,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -157,12 +155,22 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     return@Button
                 }
                 isPosting = true
+                
+                // 建立貼文物件時自動抓取使用者頭像
                 val post = Post(
-                    title = title, content = content, authorId = user.uid, authorName = user.displayName ?: "匿名用戶",
-                    tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
+                    title = title, 
+                    content = content, 
+                    authorId = user.uid, 
+                    authorName = user.displayName ?: "匿名用戶",
+                    authorAvatarUrl = user.photoUrl?.toString() ?: "", // 新增：拉取大頭貼 URL
+                    tags = selectedTags.toList(), 
+                    latitude = selectedLatLng.latitude, 
+                    longitude = selectedLatLng.longitude,
                     locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
-                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0
+                    eventTime = eventTime, 
+                    maxParticipants = maxParticipants.toIntOrNull() ?: 0
                 )
+                
                 db.collection("posts").add(post).addOnSuccessListener {
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
                     title = ""; content = ""; eventTime = ""; maxParticipants = ""; selectedTags = emptySet()
@@ -261,8 +269,7 @@ fun LocationPickerDialog(
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("搜尋店名或地址" +
-                                        "") },
+                                placeholder = { Text("搜尋店名或地址") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 trailingIcon = {
                                     if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
