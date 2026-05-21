@@ -66,6 +66,9 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation("com.google.maps.android:maps-compose:4.4.1")
     
+    // Google Places SDK (New)
+    implementation("com.google.android.libraries.places:places:3.5.0")
+    
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     

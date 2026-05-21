@@ -34,6 +34,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.AutocompletePrediction
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.model.RectangularBounds
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.maps.android.compose.*
@@ -170,7 +177,6 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     eventTime = eventTime, 
                     maxParticipants = maxParticipants.toIntOrNull() ?: 0
                 )
-                
                 db.collection("posts").add(post).addOnSuccessListener {
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
                     title = ""; content = ""; eventTime = ""; maxParticipants = ""; selectedTags = emptySet()
@@ -198,20 +204,26 @@ fun LocationPickerDialog(
     val scope = rememberCoroutineScope()
     val geocoder = remember { Geocoder(context, Locale.getDefault()) }
 
+    // 初始化 Places SDK
+    if (!Places.isInitialized()) {
+        Places.initialize(context, "AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA")
+    }
+    val placesClient = remember { Places.createClient(context) }
+    var sessionToken = remember { AutocompleteSessionToken.newInstance() }
+
     var currentLatLng by remember { mutableStateOf(initialLatLng) }
     var currentName by remember { mutableStateOf("未命名位置") }
     var currentAddress by remember { mutableStateOf("請選擇地點") }
     
     var searchQuery by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf(listOf<Address>()) }
-    var searchJob by remember { mutableStateOf<Job?>(null) }
+    var suggestions by remember { mutableStateOf(listOf<AutocompletePrediction>()) }
     var isSearching by remember { mutableStateOf(false) }
     
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialLatLng, 16f)
     }
 
-    // 核心資訊抓取函數
+    // 核心資訊抓取函數 (逆向地理編碼)
     fun updateInfo(latLng: LatLng, overrideName: String? = null) {
         currentLatLng = latLng
         scope.launch(Dispatchers.IO) {
@@ -233,6 +245,26 @@ fun LocationPickerDialog(
         }
     }
 
+    // 處理搜尋建議項選取
+    fun selectPrediction(prediction: AutocompletePrediction) {
+        val placeFields = listOf(Place.Field.LAT_LNG, Place.Field.NAME, Place.Field.ADDRESS)
+        val request = FetchPlaceRequest.newInstance(prediction.placeId, placeFields)
+        
+        placesClient.fetchPlace(request).addOnSuccessListener { response ->
+            val place = response.place
+            val target = place.latLng ?: return@addOnSuccessListener
+            currentLatLng = target
+            currentName = place.name ?: ""
+            currentAddress = place.address ?: ""
+            searchQuery = ""
+            suggestions = emptyList()
+            sessionToken = AutocompleteSessionToken.newInstance() // 選完後重置 Token
+            scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
+        }.addOnFailureListener {
+            Toast.makeText(context, "無法取得地點詳情", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
             topBar = {
@@ -244,32 +276,29 @@ fun LocationPickerDialog(
                                 value = searchQuery,
                                 onValueChange = { 
                                     searchQuery = it
-                                    searchJob?.cancel()
                                     if (it.length < 2) { suggestions = emptyList(); return@OutlinedTextField }
                                     
                                     isSearching = true
-                                    searchJob = scope.launch(Dispatchers.IO) {
-                                        delay(400)
-                                        try {
-                                            // --- 加入經緯度偏差，優先搜尋地圖中心附近的店 ---
-                                            val mapCenter = cameraPositionState.position.target
-                                            @Suppress("DEPRECATION")
-                                            val results = geocoder.getFromLocationName(
-                                                it, 10,
-                                                mapCenter.latitude - 0.2, mapCenter.longitude - 0.2,
-                                                mapCenter.latitude + 0.2, mapCenter.longitude + 0.2
-                                            )
-                                            withContext(Dispatchers.Main) {
-                                                suggestions = results ?: emptyList()
-                                                isSearching = false
-                                            }
-                                        } catch (e: Exception) {
-                                            withContext(Dispatchers.Main) { isSearching = false }
-                                        }
-                                    }
+                                    val mapCenter = cameraPositionState.position.target
+                                    val bias = RectangularBounds.newInstance(
+                                        LatLng(mapCenter.latitude - 0.2, mapCenter.longitude - 0.2),
+                                        LatLng(mapCenter.latitude + 0.2, mapCenter.longitude + 0.2)
+                                    )
+                                    
+                                    val request = FindAutocompletePredictionsRequest.builder()
+                                        .setQuery(it)
+                                        .setSessionToken(sessionToken)
+                                        .setLocationBias(bias)
+                                        .build()
+                                        
+                                    placesClient.findAutocompletePredictions(request)
+                                        .addOnSuccessListener { response ->
+                                            suggestions = response.autocompletePredictions
+                                            isSearching = false
+                                        }.addOnFailureListener { isSearching = false }
                                 },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("搜尋店名或地址") },
+                                placeholder = { Text("搜尋店名或地址 (例如: 麥當勞)") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 trailingIcon = {
                                     if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -288,7 +317,17 @@ fun LocationPickerDialog(
                     modifier = Modifier.fillMaxSize(),
                     cameraPositionState = cameraPositionState,
                     onMapClick = { latLng -> updateInfo(latLng); suggestions = emptyList() },
-                    onPOIClick = { poi -> updateInfo(poi.latLng, poi.name); suggestions = emptyList() },
+                    onPOIClick = { poi -> 
+                        // POI 點擊同樣使用 Places API 抓取詳情
+                        val request = FetchPlaceRequest.newInstance(poi.placeId, listOf(Place.Field.LAT_LNG, Place.Field.NAME, Place.Field.ADDRESS))
+                        placesClient.fetchPlace(request).addOnSuccessListener { response ->
+                            val place = response.place
+                            currentLatLng = place.latLng ?: poi.latLng
+                            currentName = place.name ?: poi.name
+                            currentAddress = place.address ?: ""
+                            suggestions = emptyList()
+                        }
+                    },
                     uiSettings = MapUiSettings(zoomControlsEnabled = false)
                 ) {
                     Marker(state = MarkerState(position = currentLatLng))
@@ -296,35 +335,19 @@ fun LocationPickerDialog(
 
                 // --- 全螢幕搜尋建議 ---
                 AnimatedVisibility(
-                    visible = suggestions.isNotEmpty() || (searchQuery.length >= 2 && !isSearching && suggestions.isEmpty()),
+                    visible = suggestions.isNotEmpty(),
                     enter = fadeIn(), exit = fadeOut()
                 ) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) {
-                        if (suggestions.isEmpty() && !isSearching) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(64.dp))
-                                    Text("找不到相關地點", color = Color.Gray)
-                                    Text("請輸入更詳細的名稱 (例如: 基隆 麥當勞)", fontSize = 12.sp, color = Color.LightGray)
-                                }
-                            }
-                        } else {
-                            LazyColumn {
-                                items(suggestions) { addr ->
-                                    val name = addr.featureName ?: addr.getAddressLine(0)
-                                    ListItem(
-                                        headlineContent = { Text(name, fontWeight = FontWeight.Bold) },
-                                        supportingContent = { Text(addr.getAddressLine(0), fontSize = 12.sp, color = Color.Gray, maxLines = 2) },
-                                        leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                        modifier = Modifier.clickable {
-                                            val target = LatLng(addr.latitude, addr.longitude)
-                                            updateInfo(target, addr.featureName)
-                                            suggestions = emptyList(); searchQuery = ""
-                                            scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
-                                        }
-                                    )
-                                    HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
-                                }
+                        LazyColumn {
+                            items(suggestions) { prediction ->
+                                ListItem(
+                                    headlineContent = { Text(prediction.getPrimaryText(null).toString(), fontWeight = FontWeight.Bold) },
+                                    supportingContent = { Text(prediction.getSecondaryText(null).toString(), fontSize = 12.sp, color = Color.Gray, maxLines = 1) },
+                                    leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    modifier = Modifier.clickable { selectPrediction(prediction) }
+                                )
+                                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
                             }
                         }
                     }
