@@ -12,7 +12,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -28,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,7 +43,6 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ntou.project.grouping.models.Post
-import ntou.project.grouping.R
 
 @SuppressLint("MissingPermission")
 @Composable
@@ -58,9 +55,9 @@ fun HomePage(
     val scope = rememberCoroutineScope()
     val db = FirebaseFirestore.getInstance()
     var posts by remember { mutableStateOf(listOf<Post>()) }
-    
+
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    
+
     // 鏡頭狀態
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(25.1502, 121.7761), 15f)
@@ -82,7 +79,7 @@ fun HomePage(
                         cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
                     }
                 }
-                
+
                 // 平滑移動到目標地點
                 scope.launch {
                     delay(100)
@@ -139,15 +136,11 @@ fun HomePage(
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 10000L, 20f, locationListener)
             } catch (e: SecurityException) { e.printStackTrace() }
 
-            onDispose { locationManager.removeUpdates(locationListener) }
-        } else { onDispose {} }
-    }
-
-    LaunchedEffect(Unit) {
-        db.collection("posts").addSnapshotListener { snapshot, _ ->
-            if (snapshot != null) {
-                posts = snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(Post::class.java)?.copy(id = doc.id)
+            firestoreListener = db.collection("posts").addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    posts = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Post::class.java)?.copy(id = doc.id)
+                    }
                 }
             }
         }
@@ -184,9 +177,7 @@ fun HomePage(
 
 @Composable
 fun PostMarker(post: Post) {
-    Column(        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.wrapContentSize()
-    ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             modifier = Modifier.size(50.dp),
             shape = CircleShape,
@@ -194,21 +185,14 @@ fun PostMarker(post: Post) {
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
             shadowElevation = 4.dp
         ) {
-            // 使用更美觀的 Material Groups 圖示，與你的參考圖樣式一致
             Icon(
                 imageVector = Icons.Default.Groups,
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
+                modifier = Modifier.fillMaxSize().padding(8.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
-
-        // 下方指針三角形 (保持不變)
-        Canvas(
-            modifier = Modifier.size(16.dp, 10.dp).offset(y = (-2).dp)
-        ) {
+        Canvas(modifier = Modifier.size(16.dp, 10.dp).offset(y = (-2).dp)) {
             val path = Path().apply {
                 moveTo(0f, 0f)
                 lineTo(size.width, 0f)
