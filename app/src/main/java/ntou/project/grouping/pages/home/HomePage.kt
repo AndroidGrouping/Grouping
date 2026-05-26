@@ -15,6 +15,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,33 +33,76 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import coil.compose.SubcomposeAsyncImage
-import coil.request.ImageRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.maps.android.compose.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import ntou.project.grouping.models.Post
 
 @SuppressLint("MissingPermission")
 @Composable
-fun HomePage(paddingValues: PaddingValues) {
+fun HomePage(
+    paddingValues: PaddingValues,
+    targetPost: Post? = null,
+    onTargetHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val db = FirebaseFirestore.getInstance()
     var posts by remember { mutableStateOf(listOf<Post>()) }
     
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-
-    val defaultLocation = LatLng(25.1502, 121.7761)
+    
+    // 鏡頭狀態
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
+        position = CameraPosition.fromLatLngZoom(LatLng(25.1502, 121.7761), 15f)
     }
 
     var locationPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    // --- 1. 處理跳轉邏輯 (僅在有 targetPost 時觸發) ---
+    LaunchedEffect(targetPost) {
+        if (targetPost != null && targetPost.latitude != 0.0) {
+            // 跳轉前，如果目前還在預設的海大，先抓取位置瞬移一下
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    if (cameraPositionState.position.target.latitude == 25.1502) {
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
+                    }
+                }
+                
+                // 平滑移動到目標地點
+                scope.launch {
+                    delay(100)
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(LatLng(targetPost.latitude, targetPost.longitude), 17f)
+                    )
+                    onTargetHandled() // 執行後 targetPost 變為 null，但此 block 不會再執行 else
+                }
+            }
+        }
+    }
+
+    // --- 2. 處理初始定位 (僅執行一次) ---
+    var isFirstLocationSet by remember { mutableStateOf(false) }
+    LaunchedEffect(locationPermissionGranted) {
+        if (locationPermissionGranted && !isFirstLocationSet && targetPost == null) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
+                    isFirstLocationSet = true
+                }
+            }
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -75,41 +120,34 @@ fun HomePage(paddingValues: PaddingValues) {
         }
     }
 
-    LaunchedEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-                location?.let {
-                    val currentLatLng = LatLng(it.latitude, it.longitude)
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(currentLatLng, 15f)
-                }
-            }
-        }
-    }
-
+    // Firestore 監聽
     DisposableEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) {
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val locationListener = object : LocationListener {
-                override fun onLocationChanged(location: Location) {}
-                @Deprecated("Deprecated in Java", ReplaceWith(""))
-                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                override fun onProviderEnabled(provider: String) {}
-                override fun onProviderDisabled(provider: String) {}
-            }
+        var firestoreListener: ListenerRegistration? = null
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val locationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {}
+            override fun onStatusChanged(p0: String?, p1: Int, p2: Bundle?) {}
+            override fun onProviderEnabled(p0: String) {}
+            override fun onProviderDisabled(p0: String) {}
+        }
 
+        if (locationPermissionGranted) {
             try {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 10000L, 20f, locationListener)
             } catch (e: SecurityException) { e.printStackTrace() }
 
-            onDispose { locationManager.removeUpdates(locationListener) }
-        } else { onDispose {} }
-    }
-
-    LaunchedEffect(Unit) {
-        db.collection("posts").addSnapshotListener { snapshot, _ ->
-            if (snapshot != null) {
-                posts = snapshot.toObjects(Post::class.java)
+            firestoreListener = db.collection("posts").addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    posts = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Post::class.java)?.copy(id = doc.id)
+                    }
+                }
             }
+        }
+
+        onDispose {
+            locationManager.removeUpdates(locationListener)
+            firestoreListener?.remove()
         }
     }
 
@@ -139,12 +177,7 @@ fun HomePage(paddingValues: PaddingValues) {
 
 @Composable
 fun PostMarker(post: Post) {
-    val context = LocalContext.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.wrapContentSize()
-    ) {
-        // 使用 Surface 替代複雜的 Box 修飾符，能更穩定地置中
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             modifier = Modifier.size(50.dp),
             shape = CircleShape,
@@ -152,42 +185,14 @@ fun PostMarker(post: Post) {
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
             shadowElevation = 4.dp
         ) {
-            SubcomposeAsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(post.authorAvatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${post.authorName}&background=random" })
-                    .allowHardware(false) // 解決 "Software rendering doesn't support hardware bitmaps" 報錯
-                    .build(),
+            Icon(
+                imageVector = Icons.Default.Groups,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                loading = {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = post.authorName.take(1).uppercase(),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                },
-                error = {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = post.authorName.take(1).uppercase(),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         }
-        
-        Canvas(
-            modifier = Modifier.size(16.dp, 10.dp).offset(y = (-2).dp)
-        ) {
+        Canvas(modifier = Modifier.size(16.dp, 10.dp).offset(y = (-2).dp)) {
             val path = Path().apply {
                 moveTo(0f, 0f)
                 lineTo(size.width, 0f)

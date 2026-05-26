@@ -45,7 +45,10 @@ import ntou.project.grouping.pages.methods.NavigationMethods
 
 @SuppressLint("MissingPermission")
 @Composable
-fun SchedulePage(paddingValues: PaddingValues) {
+fun SchedulePage(
+    paddingValues: PaddingValues,
+    onNavigateToMap: (Post) -> Unit // 新增：跳轉地圖回呼
+) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
@@ -55,12 +58,11 @@ fun SchedulePage(paddingValues: PaddingValues) {
     var myCreatedPosts by remember { mutableStateOf(listOf<Post>()) }
     var myJoinedPosts by remember { mutableStateOf(listOf<Post>()) }
     var isLoading by remember { mutableStateOf(true) }
-    var selectedTab by remember { mutableStateOf(0) } // 0: 參加中, 1: 我發起的
+    var selectedTab by remember { mutableStateOf(0) }
     
     var userLocation by remember { mutableStateOf<LatLng?>(null) }
     var expandedPostId by remember { mutableStateOf<String?>(null) }
 
-    // 取得權限並獲取目前位置
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -83,7 +85,6 @@ fun SchedulePage(paddingValues: PaddingValues) {
 
     LaunchedEffect(currentUser) {
         if (currentUser != null) {
-            // 監聽我發起的活動
             db.collection("posts")
                 .whereEqualTo("authorId", currentUser.uid)
                 .orderBy("timestamp", Query.Direction.DESCENDING)
@@ -96,7 +97,6 @@ fun SchedulePage(paddingValues: PaddingValues) {
                     if (selectedTab == 1) isLoading = false
                 }
 
-            // 監聽我參加的活動
             db.collection("posts")
                 .whereArrayContains("participants", currentUser.uid)
                 .addSnapshotListener { snapshot, _ ->
@@ -153,7 +153,8 @@ fun SchedulePage(paddingValues: PaddingValues) {
                                             Toast.makeText(context, "已退出活動", Toast.LENGTH_SHORT).show()
                                         }
                                 }
-                            }
+                            },
+                            onLocationClick = { onNavigateToMap(post) }
                         )
                     }
                 }
@@ -168,7 +169,8 @@ fun ExpandableScheduleCard(
     isExpanded: Boolean,
     userLocation: LatLng?,
     onExpandClick: () -> Unit,
-    onQuitClick: () -> Unit
+    onQuitClick: () -> Unit,
+    onLocationClick: () -> Unit // 新增地點點擊回呼
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -201,7 +203,25 @@ fun ExpandableScheduleCard(
                     Text(text = post.content, fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
                     
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "地點: ${post.locationName}", fontSize = 13.sp, color = Color.Gray)
+                    
+                    // 地點欄位：改為可點擊跳轉地圖
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onLocationClick() }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "地點: ${post.locationName}", 
+                            fontSize = 13.sp, 
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -210,14 +230,12 @@ fun ExpandableScheduleCard(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // 交通工具導覽按鈕與退出按鈕
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 汽車
                             IconButton(onClick = {
                                 userLocation?.let {
                                     scope.launch {
@@ -231,7 +249,19 @@ fun ExpandableScheduleCard(
                                 Icon(Icons.Default.DirectionsCar, "汽車", tint = if (currentMode == TravelMode.DRIVING) MaterialTheme.colorScheme.primary else Color.Gray)
                             }
 
-                            // 走路
+                            IconButton(onClick = {
+                                userLocation?.let {
+                                    scope.launch {
+                                        isCalculating = true
+                                        currentMode = TravelMode.BICYCLING
+                                        estimatedTime = NavigationMethods.getTravelTime(context, it, LatLng(post.latitude, post.longitude), TravelMode.BICYCLING)
+                                        isCalculating = false
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.TwoWheeler, "機車", tint = if (currentMode == TravelMode.BICYCLING) MaterialTheme.colorScheme.primary else Color.Gray)
+                            }
+
                             IconButton(onClick = {
                                 userLocation?.let {
                                     scope.launch {

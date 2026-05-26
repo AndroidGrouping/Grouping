@@ -29,7 +29,10 @@ import ntou.project.grouping.models.Post
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchPage(paddingValues: PaddingValues) {
+fun SearchPage(
+    paddingValues: PaddingValues,
+    onNavigateToMap: (Post) -> Unit // 新增：跳轉到地圖的回呼
+) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
@@ -42,27 +45,24 @@ fun SearchPage(paddingValues: PaddingValues) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("全部") }
     
-    // 用於控制詳情視窗的狀態
     var selectedPost by remember { mutableStateOf<Post?>(null) }
     var showDetailDialog by remember { mutableStateOf(false) }
 
     val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
 
-    // 監聽 Firestore 貼文更新
     LaunchedEffect(Unit) {
         db.collection("posts")
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, e ->
                 if (snapshot != null) {
-                    allPosts = snapshot.toObjects(Post::class.java).mapIndexed { index, post ->
-                        post.copy(id = snapshot.documents[index].id)
+                    allPosts = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Post::class.java)?.copy(id = doc.id)
                     }
                 }
                 isLoading = false
             }
     }
 
-    // 處理搜尋與過濾邏輯
     LaunchedEffect(searchQuery, selectedCategory, allPosts) {
         filteredPosts = allPosts.filter { post ->
             val matchesQuery = post.title.contains(searchQuery, ignoreCase = true) || 
@@ -72,7 +72,6 @@ fun SearchPage(paddingValues: PaddingValues) {
         }
     }
 
-    // --- 貼文詳情對話框 ---
     if (showDetailDialog && selectedPost != null) {
         val post = selectedPost!!
         val isAlreadyJoined = post.participants.contains(currentUser?.uid)
@@ -86,21 +85,26 @@ fun SearchPage(paddingValues: PaddingValues) {
                     Text(text = "發起人: ${post.authorName}", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
                     Text(text = "活動時間: ${post.eventTime}", fontWeight = FontWeight.Medium)
                     if (post.locationName.isNotBlank()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { 
+                                showDetailDialog = false
+                                onNavigateToMap(post) 
+                            }
+                        ) {
                             Icon(
                                 Icons.Default.LocationOn, 
                                 contentDescription = null, 
                                 modifier = Modifier.size(16.dp), 
                                 tint = Color.Red
                             )
-                            Text(text = post.locationName, fontSize = 14.sp)
+                            Text(text = post.locationName, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(text = post.content)
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // 顯示人數進度
                     val participantText = if (post.maxParticipants > 0) {
                         "目前人數: ${post.participants.size} / ${post.maxParticipants}"
                     } else {
@@ -111,14 +115,11 @@ fun SearchPage(paddingValues: PaddingValues) {
                         fontWeight = FontWeight.Bold,
                         color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary
                     )
-                    if (isFull && !isAlreadyJoined) {
-                        Text(text = "此活動已額滿", color = Color.Red, fontSize = 12.sp)
-                    }
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = !isFull || isAlreadyJoined, // 額滿時只能取消，不能加入
+                    enabled = !isFull || isAlreadyJoined,
                     onClick = {
                         if (currentUser == null) {
                             Toast.makeText(context, "請先登入再參加活動", Toast.LENGTH_SHORT).show()
@@ -135,13 +136,7 @@ fun SearchPage(paddingValues: PaddingValues) {
                         Toast.makeText(context, if (isAlreadyJoined) "已取消參加" else "報名成功！", Toast.LENGTH_SHORT).show()
                     }
                 ) {
-                    Text(
-                        when {
-                            isAlreadyJoined -> "取消參加"
-                            isFull -> "人數已滿"
-                            else -> "我要參加"
-                        }
-                    )
+                    Text(if (isAlreadyJoined) "取消參加" else if (isFull) "人數已滿" else "我要參加")
                 }
             },
             dismissButton = {
@@ -214,19 +209,8 @@ fun PostCard(post: Post, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(text = post.authorName, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
-                
-                // 顯示人數狀態
-                val statusText = if (post.maxParticipants > 0) {
-                    "${post.participants.size}/${post.maxParticipants} 人"
-                } else {
-                    "${post.participants.size} 人"
-                }
-                Text(
-                    text = if (isFull) "額滿 ($statusText)" else statusText, 
-                    fontSize = 12.sp, 
-                    color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary,
-                    fontWeight = if (isFull) FontWeight.Bold else FontWeight.Normal
-                )
+                val statusText = if (post.maxParticipants > 0) "${post.participants.size}/${post.maxParticipants} 人" else "${post.participants.size} 人"
+                Text(text = if (isFull) "額滿 ($statusText)" else statusText, fontSize = 12.sp, color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = post.title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
