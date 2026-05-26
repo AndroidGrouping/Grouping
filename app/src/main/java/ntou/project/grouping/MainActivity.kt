@@ -10,9 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import com.google.firebase.auth.FirebaseAuth
@@ -67,7 +64,10 @@ fun MainScreen() {
             "Search" -> SearchPage(innerPadding)
             "Add" -> NewPostPage(innerPadding)
             "Messages" -> ChatPage(innerPadding)
-            "Profile" -> UserPage(innerPadding)
+            "Profile" -> UserPage(
+                paddingValues = innerPadding,
+                onNavigateToFriends = { selectedBottomTab = "Messages" }
+            )
             else -> HomePage(innerPadding)
         }
     }
