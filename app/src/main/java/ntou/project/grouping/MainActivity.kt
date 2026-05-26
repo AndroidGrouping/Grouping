@@ -12,9 +12,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import ntou.project.grouping.components.BottomNavigationBar
 import ntou.project.grouping.components.TopNavigationBar
+import ntou.project.grouping.models.Post
 import ntou.project.grouping.pages.schedule.SchedulePage
 import ntou.project.grouping.pages.home.HomePage
 import ntou.project.grouping.pages.NewPostPage
@@ -47,6 +49,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(onLogout: () -> Unit) {
     var selectedBottomTab by remember { mutableStateOf("Home") }
+    // 追蹤從 搜尋 或 行程 頁面點擊跳轉的地點
+    var mapTargetPost by remember { mutableStateOf<Post?>(null) }
 
     Scaffold(
         topBar = {
@@ -54,18 +58,36 @@ fun MainScreen(onLogout: () -> Unit) {
         },
         bottomBar = {
             BottomNavigationBar(
-                // 當處於好友頁面時，底部圖示應停留在 Profile
                 selectedItem = if (selectedBottomTab == "Friends") "Profile" else selectedBottomTab,
-                onItemSelected = { selectedBottomTab = it }
+                onItemSelected = { 
+                    selectedBottomTab = it
+                    if (it != "Home") mapTargetPost = null
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         when (selectedBottomTab) {
-            "Home" -> HomePage(innerPadding)
-            "Search" -> SearchPage(innerPadding)
+            "Home" -> HomePage(
+                paddingValues = innerPadding,
+                targetPost = mapTargetPost,
+                onTargetHandled = { mapTargetPost = null }
+            )
+            "Search" -> SearchPage(
+                paddingValues = innerPadding,
+                onNavigateToMap = { post ->
+                    mapTargetPost = post
+                    selectedBottomTab = "Home"
+                }
+            )
             "Add" -> NewPostPage(innerPadding)
-            "Schedule" -> SchedulePage(innerPadding)
+            "Schedule" -> SchedulePage(
+                paddingValues = innerPadding,
+                onNavigateToMap = { post ->
+                    mapTargetPost = post
+                    selectedBottomTab = "Home"
+                }
+            )
             "Profile" -> UserPage(
                 paddingValues = innerPadding,
                 onNavigateToFriends = { selectedBottomTab = "Friends" },

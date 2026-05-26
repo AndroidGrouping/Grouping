@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import coil.compose.SubcomposeAsyncImage
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -41,27 +42,70 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.maps.android.compose.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import ntou.project.grouping.models.Post
 import ntou.project.grouping.R
 
 @SuppressLint("MissingPermission")
 @Composable
-fun HomePage(paddingValues: PaddingValues) {
+fun HomePage(
+    paddingValues: PaddingValues,
+    targetPost: Post? = null,
+    onTargetHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val db = FirebaseFirestore.getInstance()
     var posts by remember { mutableStateOf(listOf<Post>()) }
     
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-
-    val defaultLocation = LatLng(25.1502, 121.7761)
+    
+    // 鏡頭狀態
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 15f)
+        position = CameraPosition.fromLatLngZoom(LatLng(25.1502, 121.7761), 15f)
     }
 
     var locationPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    // --- 1. 處理跳轉邏輯 (僅在有 targetPost 時觸發) ---
+    LaunchedEffect(targetPost) {
+        if (targetPost != null && targetPost.latitude != 0.0) {
+            // 跳轉前，如果目前還在預設的海大，先抓取位置瞬移一下
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    if (cameraPositionState.position.target.latitude == 25.1502) {
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
+                    }
+                }
+                
+                // 平滑移動到目標地點
+                scope.launch {
+                    delay(100)
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(LatLng(targetPost.latitude, targetPost.longitude), 17f)
+                    )
+                    onTargetHandled() // 執行後 targetPost 變為 null，但此 block 不會再執行 else
+                }
+            }
+        }
+    }
+
+    // --- 2. 處理初始定位 (僅執行一次) ---
+    var isFirstLocationSet by remember { mutableStateOf(false) }
+    LaunchedEffect(locationPermissionGranted) {
+        if (locationPermissionGranted && !isFirstLocationSet && targetPost == null) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), 15f)
+                    isFirstLocationSet = true
+                }
+            }
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -79,28 +123,18 @@ fun HomePage(paddingValues: PaddingValues) {
         }
     }
 
-    LaunchedEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-                location?.let {
-                    val currentLatLng = LatLng(it.latitude, it.longitude)
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(currentLatLng, 15f)
-                }
-            }
-        }
-    }
-
+    // Firestore 監聽
     DisposableEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) {
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val locationListener = object : LocationListener {
-                override fun onLocationChanged(location: Location) {}
-                @Deprecated("Deprecated in Java", ReplaceWith(""))
-                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                override fun onProviderEnabled(provider: String) {}
-                override fun onProviderDisabled(provider: String) {}
-            }
+        var firestoreListener: ListenerRegistration? = null
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val locationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {}
+            override fun onStatusChanged(p0: String?, p1: Int, p2: Bundle?) {}
+            override fun onProviderEnabled(p0: String) {}
+            override fun onProviderDisabled(p0: String) {}
+        }
 
+        if (locationPermissionGranted) {
             try {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 10000L, 20f, locationListener)
             } catch (e: SecurityException) { e.printStackTrace() }
@@ -116,6 +150,11 @@ fun HomePage(paddingValues: PaddingValues) {
                     doc.toObject(Post::class.java)?.copy(id = doc.id)
                 }
             }
+        }
+
+        onDispose {
+            locationManager.removeUpdates(locationListener)
+            firestoreListener?.remove()
         }
     }
 
