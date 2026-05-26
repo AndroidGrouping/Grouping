@@ -47,7 +47,6 @@ fun LoginPage(onLoginSuccess: () -> Unit) {
                         )
 
                         // 寫入 Firestore users 集合，使用 uid 作為 Document ID
-                        // 使用 merge 避免覆蓋掉現有的好友列表等其他資料
                         db.collection("users").document(firebaseUser.uid)
                             .set(userData, SetOptions.merge())
                             .addOnCompleteListener { 
@@ -65,8 +64,11 @@ fun LoginPage(onLoginSuccess: () -> Unit) {
             }
         } catch (e: ApiException) {
             isLoading = false
-            Toast.makeText(context, "Google 登入失敗 (代碼 ${e.statusCode})", Toast.LENGTH_LONG).show()
-            Log.e("LoginPage", "Google sign in failed: ${e.statusCode}")
+            // 如果使用者取消登入，不需要顯示錯誤
+            if (e.statusCode != 12501) {
+                Toast.makeText(context, "Google 登入失敗 (代碼 ${e.statusCode})", Toast.LENGTH_LONG).show()
+                Log.e("LoginPage", "Google sign in failed: ${e.statusCode}")
+            }
         } catch (e: Exception) {
             isLoading = false
             Toast.makeText(context, "發生錯誤: ${e.message}", Toast.LENGTH_LONG).show()
@@ -92,14 +94,17 @@ fun LoginPage(onLoginSuccess: () -> Unit) {
             Button(
                 onClick = {
                     isLoading = true
-                    // 直接使用從 google-services.json 提取的 Web Client ID
                     val webClientId = "672360197151-cr3a2k3velqujvush6rlak7jkfcl38ot.apps.googleusercontent.com"
                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                         .requestIdToken(webClientId)
                         .requestEmail()
                         .build()
                     val client = GoogleSignIn.getClient(context, gso)
-                    launcher.launch(client.signInIntent)
+                    
+                    // 關鍵修正：先呼叫 signOut() 強制清除快取，讓使用者能重新選擇帳號
+                    client.signOut().addOnCompleteListener {
+                        launcher.launch(client.signInIntent)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(0.8f)
             ) {

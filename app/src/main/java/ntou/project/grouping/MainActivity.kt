@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (isLoggedIn) {
-                    MainScreen()
+                    MainScreen(onLogout = { isLoggedIn = false })
                 } else {
                     LoginPage(onLoginSuccess = { isLoggedIn = true })
                 }
@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(onLogout: () -> Unit) {
     var selectedBottomTab by remember { mutableStateOf("Home") }
 
     Scaffold(
@@ -68,7 +68,9 @@ fun MainScreen() {
             "Schedule" -> SchedulePage(innerPadding)
             "Profile" -> UserPage(
                 paddingValues = innerPadding,
-                onNavigateToFriends = { selectedBottomTab = "Friends" }
+                onNavigateToFriends = { selectedBottomTab = "Friends" },
+                onNavigateToSchedule = { selectedBottomTab = "Schedule" },
+                onLogout = onLogout
             )
             "Friends" -> FriendPage(innerPadding)
             else -> HomePage(innerPadding)
@@ -80,6 +82,6 @@ fun MainScreen() {
 @Composable
 fun MainScreenPreview() {
     GroupingTheme {
-        MainScreen()
+        MainScreen(onLogout = {})
     }
 }
