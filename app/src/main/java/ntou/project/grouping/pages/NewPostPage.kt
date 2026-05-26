@@ -1,8 +1,12 @@
 package ntou.project.grouping.pages
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.location.Address
 import android.location.Geocoder
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
@@ -60,12 +67,10 @@ fun NewPostPage(paddingValues: PaddingValues) {
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
 
-    // --- 最終選定的地點資訊 ---
     var selectedLatLng by remember { mutableStateOf(LatLng(25.1502, 121.7761)) }
     var selectedPlaceName by remember { mutableStateOf("點擊選取活動位置") }
     var selectedFullAddress by remember { mutableStateOf("") }
 
-    // --- 其他表單狀態 ---
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var maxParticipants by remember { mutableStateOf("") }
@@ -94,7 +99,6 @@ fun NewPostPage(paddingValues: PaddingValues) {
         OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("活動標題") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 地點欄位
         Card(
             onClick = { showMapPicker = true },
             modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)),
@@ -106,11 +110,7 @@ fun NewPostPage(paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    if (selectedFullAddress.isNotBlank()) {
-                        Text(text = selectedFullAddress, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
-                    } else {
-                        Text(text = "點擊開啟地圖選擇地點", fontSize = 12.sp, color = Color.Gray)
-                    }
+                    Text(text = selectedFullAddress.ifBlank { "點擊開啟地圖選擇地點" }, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
             }
@@ -119,20 +119,27 @@ fun NewPostPage(paddingValues: PaddingValues) {
         Spacer(modifier = Modifier.height(16.dp))
         
         val calendar = remember { Calendar.getInstance() }
-        val datePickerState = rememberDatePickerState()
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
         val timePickerState = rememberTimePickerState()
         var showDatePicker by remember { mutableStateOf(false) }
         var showTimePicker by remember { mutableStateOf(false) }
+
         if (showDatePicker) {
             DatePickerDialog(onDismissRequest = { showDatePicker = false }, confirmButton = {
-                TextButton(onClick = { calendar.timeInMillis = datePickerState.selectedDateMillis ?: 0L; showDatePicker = false; showTimePicker = true }) { Text("下一步") }
+                TextButton(onClick = { 
+                    calendar.timeInMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
+                    showDatePicker = false
+                    showTimePicker = true 
+                }) { Text("下一步") }
             }) { DatePicker(state = datePickerState) }
         }
         if (showTimePicker) {
             AlertDialog(onDismissRequest = { showTimePicker = false }, confirmButton = {
                 TextButton(onClick = {
-                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour); calendar.set(Calendar.MINUTE, timePickerState.minute)
-                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(calendar.time); showTimePicker = false
+                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                    calendar.set(Calendar.MINUTE, timePickerState.minute)
+                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(calendar.time)
+                    showTimePicker = false
                 }) { Text("確定") }
             }, text = { Column { Text("選擇活動時間", fontWeight = FontWeight.Bold); TimePicker(state = timePickerState) } })
         }
@@ -162,20 +169,12 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     return@Button
                 }
                 isPosting = true
-                
-                // 建立貼文物件時自動抓取使用者頭像
                 val post = Post(
-                    title = title, 
-                    content = content, 
-                    authorId = user.uid, 
-                    authorName = user.displayName ?: "匿名用戶",
-                    authorAvatarUrl = user.photoUrl?.toString() ?: "", // 新增：拉取大頭貼 URL
-                    tags = selectedTags.toList(), 
-                    latitude = selectedLatLng.latitude, 
-                    longitude = selectedLatLng.longitude,
+                    title = title, content = content, authorId = user.uid, authorName = user.displayName ?: "匿名用戶",
+                    authorAvatarUrl = user.photoUrl?.toString() ?: "",
+                    tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
                     locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
-                    eventTime = eventTime, 
-                    maxParticipants = maxParticipants.toIntOrNull() ?: 0
+                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0
                 )
                 db.collection("posts").add(post).addOnSuccessListener {
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
@@ -187,12 +186,11 @@ fun NewPostPage(paddingValues: PaddingValues) {
             shape = RoundedCornerShape(12.dp),
             enabled = !isPosting
         ) {
-            if (isPosting) CircularProgressIndicator(color = Color.White) else Text("確認發布", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            if (isPosting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp)) else Text("確認發布", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
-// --- 大重構：地點選擇專用對話框組件 ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationPickerDialog(
@@ -203,8 +201,8 @@ fun LocationPickerDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val geocoder = remember { Geocoder(context, Locale.getDefault()) }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    // 初始化 Places SDK
     if (!Places.isInitialized()) {
         Places.initialize(context, "AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA")
     }
@@ -213,7 +211,8 @@ fun LocationPickerDialog(
 
     var currentLatLng by remember { mutableStateOf(initialLatLng) }
     var currentName by remember { mutableStateOf("未命名位置") }
-    var currentAddress by remember { mutableStateOf("請選擇地點") }
+    var currentAddress by remember { mutableStateOf("請點擊地圖選取") }
+    var hasLocationPicked by remember { mutableStateOf(false) } // 控制紅點顯示
     
     var searchQuery by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf(listOf<AutocompletePrediction>()) }
@@ -223,9 +222,21 @@ fun LocationPickerDialog(
         position = CameraPosition.fromLatLngZoom(initialLatLng, 16f)
     }
 
-    // 核心資訊抓取函數 (逆向地理編碼)
+    // 啟動時：自動抓取目前位置並移鏡頭，但不自動下標籤 (移除紅點)
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    val userLatLng = LatLng(it.latitude, it.longitude)
+                    cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(userLatLng, 16f))
+                }
+            }
+        }
+    }
+
     fun updateInfo(latLng: LatLng, overrideName: String? = null) {
         currentLatLng = latLng
+        hasLocationPicked = true // 標記為已選取
         scope.launch(Dispatchers.IO) {
             try {
                 val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
@@ -245,23 +256,17 @@ fun LocationPickerDialog(
         }
     }
 
-    // 處理搜尋建議項選取
     fun selectPrediction(prediction: AutocompletePrediction) {
         val placeFields = listOf(Place.Field.LAT_LNG, Place.Field.NAME, Place.Field.ADDRESS)
         val request = FetchPlaceRequest.newInstance(prediction.placeId, placeFields)
-        
         placesClient.fetchPlace(request).addOnSuccessListener { response ->
             val place = response.place
             val target = place.latLng ?: return@addOnSuccessListener
-            currentLatLng = target
-            currentName = place.name ?: ""
-            currentAddress = place.address ?: ""
+            updateInfo(target, place.name)
             searchQuery = ""
             suggestions = emptyList()
-            sessionToken = AutocompleteSessionToken.newInstance() // 選完後重置 Token
-            scope.launch { cameraPositionState.animate(com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 17f)) }
-        }.addOnFailureListener {
-            Toast.makeText(context, "無法取得地點詳情", Toast.LENGTH_SHORT).show()
+            sessionToken = AutocompleteSessionToken.newInstance()
+            scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target, 17f)) }
         }
     }
 
@@ -271,38 +276,30 @@ fun LocationPickerDialog(
                 Surface(tonalElevation = 4.dp, shadowElevation = 8.dp) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+                            IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { 
                                     searchQuery = it
                                     if (it.length < 2) { suggestions = emptyList(); return@OutlinedTextField }
-                                    
                                     isSearching = true
                                     val mapCenter = cameraPositionState.position.target
                                     val bias = RectangularBounds.newInstance(
                                         LatLng(mapCenter.latitude - 0.2, mapCenter.longitude - 0.2),
                                         LatLng(mapCenter.latitude + 0.2, mapCenter.longitude + 0.2)
                                     )
-                                    
-                                    val request = FindAutocompletePredictionsRequest.builder()
-                                        .setQuery(it)
-                                        .setSessionToken(sessionToken)
-                                        .setLocationBias(bias)
-                                        .build()
-                                        
-                                    placesClient.findAutocompletePredictions(request)
-                                        .addOnSuccessListener { response ->
-                                            suggestions = response.autocompletePredictions
-                                            isSearching = false
-                                        }.addOnFailureListener { isSearching = false }
+                                    val request = FindAutocompletePredictionsRequest.builder().setQuery(it).setSessionToken(sessionToken).setLocationBias(bias).build()
+                                    placesClient.findAutocompletePredictions(request).addOnSuccessListener { response ->
+                                        suggestions = response.autocompletePredictions
+                                        isSearching = false
+                                    }.addOnFailureListener { isSearching = false }
                                 },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("搜尋店名或地址 (例如: 麥當勞)") },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                placeholder = { Text("搜尋店名或地址") },
+                                leadingIcon = { Icon(Icons.Default.Search, null) },
                                 trailingIcon = {
                                     if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                    else if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = ""; suggestions = emptyList() }) { Icon(Icons.Default.Clear, contentDescription = null) }
+                                    else if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = ""; suggestions = emptyList() }) { Icon(Icons.Default.Clear, null) }
                                 },
                                 singleLine = true,
                                 shape = CircleShape
@@ -318,42 +315,34 @@ fun LocationPickerDialog(
                     cameraPositionState = cameraPositionState,
                     onMapClick = { latLng -> updateInfo(latLng); suggestions = emptyList() },
                     onPOIClick = { poi -> 
-                        // POI 點擊同樣使用 Places API 抓取詳情
                         val request = FetchPlaceRequest.newInstance(poi.placeId, listOf(Place.Field.LAT_LNG, Place.Field.NAME, Place.Field.ADDRESS))
                         placesClient.fetchPlace(request).addOnSuccessListener { response ->
-                            val place = response.place
-                            currentLatLng = place.latLng ?: poi.latLng
-                            currentName = place.name ?: poi.name
-                            currentAddress = place.address ?: ""
-                            suggestions = emptyList()
+                            updateInfo(response.place.latLng ?: poi.latLng, response.place.name ?: poi.name)
                         }
                     },
                     uiSettings = MapUiSettings(zoomControlsEnabled = false)
                 ) {
-                    Marker(state = MarkerState(position = currentLatLng))
+                    if (hasLocationPicked) {
+                        Marker(state = MarkerState(position = currentLatLng))
+                    }
                 }
 
-                // --- 全螢幕搜尋建議 ---
-                AnimatedVisibility(
-                    visible = suggestions.isNotEmpty(),
-                    enter = fadeIn(), exit = fadeOut()
-                ) {
+                AnimatedVisibility(visible = suggestions.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) {
                         LazyColumn {
                             items(suggestions) { prediction ->
                                 ListItem(
                                     headlineContent = { Text(prediction.getPrimaryText(null).toString(), fontWeight = FontWeight.Bold) },
-                                    supportingContent = { Text(prediction.getSecondaryText(null).toString(), fontSize = 12.sp, color = Color.Gray, maxLines = 1) },
-                                    leadingContent = { Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    supportingContent = { Text(prediction.getSecondaryText(null).toString(), fontSize = 12.sp, color = Color.Gray) },
+                                    leadingContent = { Icon(Icons.Default.Place, null, tint = MaterialTheme.colorScheme.primary) },
                                     modifier = Modifier.clickable { selectPrediction(prediction) }
                                 )
-                                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+                                HorizontalDivider(thickness = 0.5.dp)
                             }
                         }
                     }
                 }
 
-                // --- 底部確認面板 ---
                 Card(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth().shadow(12.dp, RoundedCornerShape(20.dp)),
                     shape = RoundedCornerShape(20.dp),
@@ -363,12 +352,13 @@ fun LocationPickerDialog(
                         Text(text = "選取的地點", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = currentName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                        Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = Color.Gray, maxLines = 2, lineHeight = 18.sp)
+                        Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = Color.Gray, maxLines = 2)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { onLocationConfirm(currentLatLng, currentName, currentAddress) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = hasLocationPicked
                         ) {
                             Text("就選這裡", fontWeight = FontWeight.Bold)
                         }
