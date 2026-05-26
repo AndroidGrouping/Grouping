@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -138,6 +139,7 @@ fun HomePage(paddingValues: PaddingValues) {
 
 @Composable
 fun PostMarker(post: Post) {
+    val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.wrapContentSize()
@@ -151,7 +153,10 @@ fun PostMarker(post: Post) {
             shadowElevation = 4.dp
         ) {
             SubcomposeAsyncImage(
-                model = post.authorAvatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${post.authorName}&background=random" },
+                model = ImageRequest.Builder(context)
+                    .data(post.authorAvatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${post.authorName}&background=random" })
+                    .allowHardware(false) // 解決 "Software rendering doesn't support hardware bitmaps" 報錯
+                    .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
