@@ -12,9 +12,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,20 +28,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import coil.compose.SubcomposeAsyncImage
-import coil.request.ImageRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.maps.android.compose.*
 import ntou.project.grouping.models.Post
+import ntou.project.grouping.R
 
 @SuppressLint("MissingPermission")
 @Composable
@@ -108,7 +112,9 @@ fun HomePage(paddingValues: PaddingValues) {
     LaunchedEffect(Unit) {
         db.collection("posts").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
-                posts = snapshot.toObjects(Post::class.java)
+                posts = snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(Post::class.java)?.copy(id = doc.id)
+                }
             }
         }
     }
@@ -139,12 +145,9 @@ fun HomePage(paddingValues: PaddingValues) {
 
 @Composable
 fun PostMarker(post: Post) {
-    val context = LocalContext.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Column(        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.wrapContentSize()
     ) {
-        // 使用 Surface 替代複雜的 Box 修飾符，能更穩定地置中
         Surface(
             modifier = Modifier.size(50.dp),
             shape = CircleShape,
@@ -152,39 +155,18 @@ fun PostMarker(post: Post) {
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
             shadowElevation = 4.dp
         ) {
-            SubcomposeAsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(post.authorAvatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${post.authorName}&background=random" })
-                    .allowHardware(false) // 解決 "Software rendering doesn't support hardware bitmaps" 報錯
-                    .build(),
+            // 使用更美觀的 Material Groups 圖示，與你的參考圖樣式一致
+            Icon(
+                imageVector = Icons.Default.Groups,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                loading = {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = post.authorName.take(1).uppercase(),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                },
-                error = {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = post.authorName.take(1).uppercase(),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         }
-        
+
+        // 下方指針三角形 (保持不變)
         Canvas(
             modifier = Modifier.size(16.dp, 10.dp).offset(y = (-2).dp)
         ) {
