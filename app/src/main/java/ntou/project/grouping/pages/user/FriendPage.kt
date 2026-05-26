@@ -1,4 +1,4 @@
-package ntou.project.grouping.pages.chat
+package ntou.project.grouping.pages.user
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -27,7 +27,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import ntou.project.grouping.models.User
 
 @Composable
-fun ChatPage(paddingValues: PaddingValues) {
+fun FriendPage(paddingValues: PaddingValues) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
@@ -193,7 +193,7 @@ fun ChatPage(paddingValues: PaddingValues) {
 }
 
 @Composable
-fun UserAvatar(url: String, name: String, size: Int = 40) {
+private fun UserAvatar(url: String, name: String, size: Int = 40) {
     Surface(
         modifier = Modifier.size(size.dp),
         shape = CircleShape,
@@ -219,7 +219,7 @@ fun UserAvatar(url: String, name: String, size: Int = 40) {
 }
 
 @Composable
-fun FriendItem(user: User, onClick: () -> Unit) {
+private fun FriendItem(user: User, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()

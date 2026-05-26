@@ -9,11 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +30,9 @@ import ntou.project.grouping.models.User
 @Composable
 fun UserPage(
     paddingValues: PaddingValues,
-    onNavigateToFriends: () -> Unit
+    onNavigateToFriends: () -> Unit,
+    onNavigateToSchedule: () -> Unit,
+    onLogout: () -> Unit // 新增登出回呼
 ) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
@@ -82,7 +81,7 @@ fun UserPage(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 大頭貼 (僅限檢視)
+            // 大頭貼
             Surface(
                 modifier = Modifier
                     .size(120.dp)
@@ -111,49 +110,40 @@ fun UserPage(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 1. 暱稱 (可編輯)
-            ProfileInfoSection(
-                label = "暱稱",
-                value = if (isEditing) displayName else userData?.displayName ?: "未設定",
-                isEditing = isEditing,
-                onValueChange = { displayName = it }
-            )
+            // 資訊顯示區
+            if (isEditing) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text("暱稱") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = bio,
+                    onValueChange = { bio = it },
+                    label = { Text("自我介紹") },
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    placeholder = { Text("介紹一下你自己吧...") }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            } else {
+                ProfileInfoItem(label = "暱稱", value = userData?.displayName ?: "未設定")
+                ProfileInfoItem(label = "自我介紹", value = if (userData?.bio.isNullOrEmpty()) "尚未填寫自我介紹" else userData?.bio!!)
+            }
 
-            // 2. 自我介紹 (可編輯)
-            ProfileInfoSection(
-                label = "自我介紹",
-                value = if (isEditing) bio else if (userData?.bio.isNullOrEmpty()) "尚未填寫自我介紹" else userData?.bio!!,
-                isEditing = isEditing,
-                isMultiLine = true,
-                onValueChange = { bio = it }
-            )
-
-            // 3. 電子郵件 (僅限檢視)
-            ProfileInfoSection(label = "電子郵件", value = currentUser.email ?: "無", isReadOnly = true)
-
-            // 4. 使用者 ID (僅限檢視)
-            ProfileInfoSection(label = "使用者 ID", value = currentUser.uid, isReadOnly = true)
+            ProfileInfoItem(label = "電子郵件", value = currentUser.email ?: "無")
+            ProfileInfoItem(label = "使用者 ID", value = currentUser.uid)
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (!isEditing) {
-                // 按鈕區塊
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    MenuButton(text = "編輯個人資料", icon = Icons.Default.Edit) {
-                        isEditing = true
-                    }
-                    MenuButton(text = "好友", icon = Icons.Default.Person) {
-                        onNavigateToFriends()
-                    }
-                    MenuButton(text = "我的行程", icon = Icons.Default.DateRange) {
-                        Toast.makeText(context, "功能尚未實作", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } else {
-                // 儲存與取消按鈕
+            if (isEditing) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(
-                        onClick = {
+                        onClick = { 
                             isEditing = false
                             displayName = userData?.displayName ?: ""
                             bio = userData?.bio ?: ""
@@ -195,6 +185,28 @@ fun UserPage(
                         }
                     }
                 }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MenuButton(text = "編輯個人資料", icon = Icons.Default.Edit) {
+                        isEditing = true
+                    }
+                    MenuButton(text = "好友", icon = Icons.Default.Person) {
+                        onNavigateToFriends()
+                    }
+                    MenuButton(text = "我的行程", icon = Icons.Default.DateRange) {
+                        onNavigateToSchedule()
+                    }
+                    
+                    // 登出按鈕
+                    MenuButton(
+                        text = "登出帳號", 
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        contentColor = MaterialTheme.colorScheme.error
+                    ) {
+                        auth.signOut()
+                        onLogout()
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(40.dp))
         }
@@ -202,45 +214,25 @@ fun UserPage(
 }
 
 @Composable
-fun ProfileInfoSection(
-    label: String,
-    value: String,
-    isEditing: Boolean = false,
-    isReadOnly: Boolean = false,
-    isMultiLine: Boolean = false,
-    onValueChange: (String) -> Unit = {}
-) {
+fun ProfileInfoItem(label: String, value: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-        if (isEditing && !isReadOnly) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .then(if (isMultiLine) Modifier.height(100.dp) else Modifier),
-                shape = RoundedCornerShape(8.dp),
-                textStyle = MaterialTheme.typography.bodyLarge
-            )
-        } else {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isReadOnly) FontWeight.Normal else FontWeight.Medium,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
+        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
         HorizontalDivider(modifier = Modifier.padding(top = 8.dp), thickness = 0.5.dp, color = Color.LightGray)
     }
 }
 
 @Composable
-fun MenuButton(text: String, icon: ImageVector, onClick: () -> Unit) {
+fun MenuButton(
+    text: String, 
+    icon: ImageVector, 
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+    onClick: () -> Unit
+) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -251,9 +243,14 @@ fun MenuButton(text: String, icon: ImageVector, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(imageVector = icon, contentDescription = null, tint = contentColor)
             Spacer(modifier = Modifier.width(16.dp))
-            Text(text = text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = text, 
+                style = MaterialTheme.typography.bodyLarge, 
+                fontWeight = FontWeight.SemiBold,
+                color = if (contentColor == MaterialTheme.colorScheme.error) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(modifier = Modifier.weight(1f))
             Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
         }

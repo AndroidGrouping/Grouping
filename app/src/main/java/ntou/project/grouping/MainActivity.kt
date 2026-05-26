@@ -15,12 +15,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.google.firebase.auth.FirebaseAuth
 import ntou.project.grouping.components.BottomNavigationBar
 import ntou.project.grouping.components.TopNavigationBar
-import ntou.project.grouping.pages.chat.ChatPage
+import ntou.project.grouping.pages.schedule.SchedulePage
 import ntou.project.grouping.pages.home.HomePage
 import ntou.project.grouping.pages.NewPostPage
 import ntou.project.grouping.pages.auth.LoginPage
 import ntou.project.grouping.pages.search.SearchPage
 import ntou.project.grouping.pages.user.UserPage
+import ntou.project.grouping.pages.user.FriendPage
 import ntou.project.grouping.ui.theme.GroupingTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,7 +35,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (isLoggedIn) {
-                    MainScreen()
+                    MainScreen(onLogout = { isLoggedIn = false })
                 } else {
                     LoginPage(onLoginSuccess = { isLoggedIn = true })
                 }
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(onLogout: () -> Unit) {
     var selectedBottomTab by remember { mutableStateOf("Home") }
 
     Scaffold(
@@ -53,7 +54,8 @@ fun MainScreen() {
         },
         bottomBar = {
             BottomNavigationBar(
-                selectedItem = selectedBottomTab,
+                // 當處於好友頁面時，底部圖示應停留在 Profile
+                selectedItem = if (selectedBottomTab == "Friends") "Profile" else selectedBottomTab,
                 onItemSelected = { selectedBottomTab = it }
             )
         },
@@ -63,11 +65,14 @@ fun MainScreen() {
             "Home" -> HomePage(innerPadding)
             "Search" -> SearchPage(innerPadding)
             "Add" -> NewPostPage(innerPadding)
-            "Messages" -> ChatPage(innerPadding)
+            "Schedule" -> SchedulePage(innerPadding)
             "Profile" -> UserPage(
                 paddingValues = innerPadding,
-                onNavigateToFriends = { selectedBottomTab = "Messages" }
+                onNavigateToFriends = { selectedBottomTab = "Friends" },
+                onNavigateToSchedule = { selectedBottomTab = "Schedule" },
+                onLogout = onLogout
             )
+            "Friends" -> FriendPage(innerPadding)
             else -> HomePage(innerPadding)
         }
     }
@@ -77,6 +82,6 @@ fun MainScreen() {
 @Composable
 fun MainScreenPreview() {
     GroupingTheme {
-        MainScreen()
+        MainScreen(onLogout = {})
     }
 }
