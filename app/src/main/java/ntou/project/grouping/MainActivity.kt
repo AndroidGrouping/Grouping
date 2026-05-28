@@ -12,8 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
+import com.google.maps.android.compose.rememberCameraPositionState
 import ntou.project.grouping.components.BottomNavigationBar
 import ntou.project.grouping.components.TopNavigationBar
 import ntou.project.grouping.models.Post
@@ -32,8 +34,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GroupingTheme {
-                var isLoggedIn by remember { 
-                    mutableStateOf(FirebaseAuth.getInstance().currentUser != null) 
+                var isLoggedIn by remember {
+                    mutableStateOf(FirebaseAuth.getInstance().currentUser != null)
                 }
 
                 if (isLoggedIn) {
@@ -52,6 +54,14 @@ fun MainScreen(onLogout: () -> Unit) {
     // 追蹤從 搜尋 或 行程 頁面點擊跳轉的地點
     var mapTargetPost by remember { mutableStateOf<Post?>(null) }
 
+    // 提升鏡頭位置狀態，用以紀錄 HomePage 最後的位置
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LatLng(25.1502, 121.7761), 15f)
+    }
+
+    // 提升初次定位旗標：確保切換頁面回來後不會重設鏡頭位置
+    var isInitialLocationSet by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopNavigationBar()
@@ -59,7 +69,7 @@ fun MainScreen(onLogout: () -> Unit) {
         bottomBar = {
             BottomNavigationBar(
                 selectedItem = if (selectedBottomTab == "Friends") "Profile" else selectedBottomTab,
-                onItemSelected = { 
+                onItemSelected = {
                     selectedBottomTab = it
                     if (it != "Home") mapTargetPost = null
                 }
@@ -70,12 +80,19 @@ fun MainScreen(onLogout: () -> Unit) {
         when (selectedBottomTab) {
             "Home" -> HomePage(
                 paddingValues = innerPadding,
+                cameraPositionState = cameraPositionState,
+                isInitialLocationSet = isInitialLocationSet,
+                onInitialLocationSet = { isInitialLocationSet = true },
                 targetPost = mapTargetPost,
                 onTargetHandled = { mapTargetPost = null }
             )
             "Search" -> SearchPage(
                 paddingValues = innerPadding,
                 onNavigateToMap = { post ->
+                    // 跳轉前將鏡頭起點固定為離開 Home 時的最後位置，
+                    // 讓 HomePage 的動畫從該位置出發飛向目標活動
+                    val lastPosition = cameraPositionState.position
+                    cameraPositionState.position = lastPosition
                     mapTargetPost = post
                     selectedBottomTab = "Home"
                 }
@@ -84,6 +101,10 @@ fun MainScreen(onLogout: () -> Unit) {
             "Schedule" -> SchedulePage(
                 paddingValues = innerPadding,
                 onNavigateToMap = { post ->
+                    // 跳轉前將鏡頭起點固定為離開 Home 時的最後位置，
+                    // 讓 HomePage 的動畫從該位置出發飛向目標活動
+                    val lastPosition = cameraPositionState.position
+                    cameraPositionState.position = lastPosition
                     mapTargetPost = post
                     selectedBottomTab = "Home"
                 }
@@ -95,7 +116,14 @@ fun MainScreen(onLogout: () -> Unit) {
                 onLogout = onLogout
             )
             "Friends" -> FriendPage(innerPadding)
-            else -> HomePage(innerPadding)
+            else -> HomePage(
+                paddingValues = innerPadding,
+                cameraPositionState = cameraPositionState,
+                isInitialLocationSet = isInitialLocationSet,
+                onInitialLocationSet = { isInitialLocationSet = true },
+                targetPost = mapTargetPost,
+                onTargetHandled = { mapTargetPost = null }
+            )
         }
     }
 }
