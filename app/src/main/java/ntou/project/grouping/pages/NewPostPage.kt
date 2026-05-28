@@ -174,7 +174,8 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     authorAvatarUrl = user.photoUrl?.toString() ?: "",
                     tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
                     locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
-                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0
+                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0,
+                    participants = listOf(user.uid) // 發起人設為第一個參加者
                 )
                 db.collection("posts").add(post).addOnSuccessListener {
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
@@ -207,7 +208,7 @@ fun LocationPickerDialog(
         Places.initialize(context, "AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA")
     }
     val placesClient = remember { Places.createClient(context) }
-    var sessionToken = remember { AutocompleteSessionToken.newInstance() }
+    var sessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
 
     var currentLatLng by remember { mutableStateOf(initialLatLng) }
     var currentName by remember { mutableStateOf("未命名位置") }

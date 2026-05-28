@@ -36,6 +36,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.maps.model.TravelMode
 import kotlinx.coroutines.launch
@@ -47,7 +48,7 @@ import ntou.project.grouping.pages.methods.NavigationMethods
 @Composable
 fun SchedulePage(
     paddingValues: PaddingValues,
-    onNavigateToMap: (Post) -> Unit // 新增：跳轉地圖回呼
+    onNavigateToMap: (Post) -> Unit
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
@@ -58,10 +59,13 @@ fun SchedulePage(
     var myCreatedPosts by remember { mutableStateOf(listOf<Post>()) }
     var myJoinedPosts by remember { mutableStateOf(listOf<Post>()) }
     var isLoading by remember { mutableStateOf(true) }
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) } // 0: 參加中, 1: 我發起的
     
     var userLocation by remember { mutableStateOf<LatLng?>(null) }
     var expandedPostId by remember { mutableStateOf<String?>(null) }
+
+    var showDisbandDialog by remember { mutableStateOf(false) }
+    var postToDisband by remember { mutableStateOf<Post?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -83,31 +87,72 @@ fun SchedulePage(
         }
     }
 
-    LaunchedEffect(currentUser) {
+    // 使用 DisposableEffect 管理 Firestore 監聽器，確保刪除活動時能即時刷新
+    DisposableEffect(currentUser) {
+        var createdListener: ListenerRegistration? = null
+        var joinedListener: ListenerRegistration? = null
+
         if (currentUser != null) {
-            db.collection("posts")
+            isLoading = true
+            // 1. 監聽我發起的活動 (移除 orderBy 以避免索引問題，改在記憶體排序)
+            createdListener = db.collection("posts")
                 .whereEqualTo("authorId", currentUser.uid)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .addSnapshotListener { snapshot, _ ->
+                .addSnapshotListener { snapshot, e ->
                     if (snapshot != null) {
                         myCreatedPosts = snapshot.documents.mapNotNull { doc ->
                             doc.toObject(Post::class.java)?.copy(id = doc.id)
-                        }
+                        }.sortedByDescending { it.timestamp } // 記憶體排序
                     }
-                    if (selectedTab == 1) isLoading = false
+                    isLoading = false
                 }
 
-            db.collection("posts")
+            // 2. 監聽我參加的活動
+            joinedListener = db.collection("posts")
                 .whereArrayContains("participants", currentUser.uid)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null) {
                         myJoinedPosts = snapshot.documents.mapNotNull { doc ->
                             doc.toObject(Post::class.java)?.copy(id = doc.id)
-                        }
+                        }.sortedByDescending { it.timestamp } // 記憶體排序
                     }
-                    if (selectedTab == 0) isLoading = false
+                    isLoading = false
                 }
+        } else {
+            isLoading = false
         }
+
+        onDispose {
+            createdListener?.remove()
+            joinedListener?.remove()
+        }
+    }
+
+    // 解散活動確認對話框
+    if (showDisbandDialog && postToDisband != null) {
+        AlertDialog(
+            onDismissRequest = { showDisbandDialog = false },
+            title = { Text("解散活動") },
+            text = { Text("你是最後一位參加者，退出將會自動解散此活動，是否確定？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val postRef = db.collection("posts").document(postToDisband!!.id)
+                    db.runTransaction { transaction ->
+                        transaction.delete(postRef)
+                    }.addOnSuccessListener {
+                        Toast.makeText(context, "活動已解散", Toast.LENGTH_SHORT).show()
+                    }.addOnFailureListener {
+                        Toast.makeText(context, "解散失敗", Toast.LENGTH_SHORT).show()
+                    }
+                    showDisbandDialog = false
+                    postToDisband = null
+                }) {
+                    Text("確定解散", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisbandDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
@@ -120,7 +165,7 @@ fun SchedulePage(
             }
         }
 
-        if (isLoading && (myCreatedPosts.isEmpty() && myJoinedPosts.isEmpty())) {
+        if (isLoading && myCreatedPosts.isEmpty() && myJoinedPosts.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
@@ -137,7 +182,7 @@ fun SchedulePage(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(displayList) { post ->
+                    items(displayList, key = { it.id }) { post ->
                         ExpandableScheduleCard(
                             post = post,
                             isExpanded = expandedPostId == post.id,
@@ -147,11 +192,16 @@ fun SchedulePage(
                             },
                             onQuitClick = {
                                 if (currentUser != null) {
-                                    db.collection("posts").document(post.id)
-                                        .update("participants", FieldValue.arrayRemove(currentUser.uid))
-                                        .addOnSuccessListener {
-                                            Toast.makeText(context, "已退出活動", Toast.LENGTH_SHORT).show()
-                                        }
+                                    if (post.participants.size == 1) {
+                                        postToDisband = post
+                                        showDisbandDialog = true
+                                    } else {
+                                        val postRef = db.collection("posts").document(post.id)
+                                        postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "已退出活動", Toast.LENGTH_SHORT).show()
+                                            }
+                                    }
                                 }
                             },
                             onLocationClick = { onNavigateToMap(post) }
@@ -170,7 +220,7 @@ fun ExpandableScheduleCard(
     userLocation: LatLng?,
     onExpandClick: () -> Unit,
     onQuitClick: () -> Unit,
-    onLocationClick: () -> Unit // 新增地點點擊回呼
+    onLocationClick: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -204,7 +254,6 @@ fun ExpandableScheduleCard(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 地點欄位：改為可點擊跳轉地圖
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -213,14 +262,9 @@ fun ExpandableScheduleCard(
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.LocationOn, null, tint = Color.Red, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "地點: ${post.locationName}", 
-                            fontSize = 13.sp, 
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(text = "地點: ${post.locationName}", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))

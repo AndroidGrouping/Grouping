@@ -16,9 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
@@ -31,7 +33,7 @@ import ntou.project.grouping.models.Post
 @Composable
 fun SearchPage(
     paddingValues: PaddingValues,
-    onNavigateToMap: (Post) -> Unit // 新增：跳轉到地圖的回呼
+    onNavigateToMap: (Post) -> Unit 
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
@@ -47,6 +49,7 @@ fun SearchPage(
     
     var selectedPost by remember { mutableStateOf<Post?>(null) }
     var showDetailDialog by remember { mutableStateOf(false) }
+    var showDisbandDialog by remember { mutableStateOf(false) }
 
     val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
 
@@ -72,6 +75,32 @@ fun SearchPage(
         }
     }
 
+    // --- 解散活動確認對話框 ---
+    if (showDisbandDialog && selectedPost != null) {
+        AlertDialog(
+            onDismissRequest = { showDisbandDialog = false },
+            title = { Text("解散活動") },
+            text = { Text("你是最後一位參加者，退出將會自動解散此活動，是否確定？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val postRef = db.collection("posts").document(selectedPost!!.id)
+                    performLeaveTransaction(db, postRef, currentUser?.uid) {
+                        Toast.makeText(context, "活動已解散", Toast.LENGTH_SHORT).show()
+                    }
+                    showDisbandDialog = false
+                    showDetailDialog = false
+                    selectedPost = null
+                }) {
+                    Text("確定解散", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisbandDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    // --- 貼文詳情對話框 ---
     if (showDetailDialog && selectedPost != null) {
         val post = selectedPost!!
         val isAlreadyJoined = post.participants.contains(currentUser?.uid)
@@ -92,12 +121,7 @@ fun SearchPage(
                                 onNavigateToMap(post) 
                             }
                         ) {
-                            Icon(
-                                Icons.Default.LocationOn, 
-                                contentDescription = null, 
-                                modifier = Modifier.size(16.dp), 
-                                tint = Color.Red
-                            )
+                            Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp), tint = Color.Red)
                             Text(text = post.locationName, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     }
@@ -105,43 +129,39 @@ fun SearchPage(
                     Text(text = post.content)
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    val participantText = if (post.maxParticipants > 0) {
-                        "目前人數: ${post.participants.size} / ${post.maxParticipants}"
-                    } else {
-                        "目前人數: ${post.participants.size} (不限人數)"
-                    }
-                    Text(
-                        text = participantText,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary
-                    )
+                    val participantText = if (post.maxParticipants > 0) "${post.participants.size} / ${post.maxParticipants}" else "${post.participants.size} 人"
+                    Text(text = "目前人數: $participantText", fontWeight = FontWeight.Bold, color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary)
                 }
             },
             confirmButton = {
                 Button(
                     enabled = !isFull || isAlreadyJoined,
                     onClick = {
-                        if (currentUser == null) {
-                            Toast.makeText(context, "請先登入再參加活動", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        
+                        if (currentUser == null) return@Button
                         val postRef = db.collection("posts").document(post.id)
+                        
                         if (isAlreadyJoined) {
-                            postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
+                            if (post.participants.size == 1) {
+                                showDisbandDialog = true
+                            } else {
+                                performLeaveTransaction(db, postRef, currentUser.uid) {
+                                    Toast.makeText(context, "已取消參加", Toast.LENGTH_SHORT).show()
+                                }
+                                showDetailDialog = false
+                            }
                         } else {
                             postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
+                                .addOnSuccessListener {
+                                    Toast.makeText(context, "報名成功！", Toast.LENGTH_SHORT).show()
+                                }
+                            showDetailDialog = false
                         }
-                        showDetailDialog = false
-                        Toast.makeText(context, if (isAlreadyJoined) "已取消參加" else "報名成功！", Toast.LENGTH_SHORT).show()
                     }
                 ) {
                     Text(if (isAlreadyJoined) "取消參加" else if (isFull) "人數已滿" else "我要參加")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showDetailDialog = false }) { Text("關閉") }
-            }
+            dismissButton = { TextButton(onClick = { showDetailDialog = false }) { Text("關閉") } }
         )
     }
 
@@ -151,41 +171,29 @@ fun SearchPage(
             onValueChange = { searchQuery = it },
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             placeholder = { Text("搜尋貼文...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
             shape = RoundedCornerShape(12.dp),
             singleLine = true
         )
 
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        LazyRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(categories) { category ->
-                FilterChip(
-                    selected = selectedCategory == category,
-                    onClick = { selectedCategory = category },
-                    label = { Text(category) }
-                )
+                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category }, label = { Text(category) })
             }
         }
 
         if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(filteredPosts) { post ->
                     PostCard(
                         post = post,
                         onClick = {
                             selectedPost = post
                             showDetailDialog = true
-                        }
+                        },
+                        onLocationClick = { onNavigateToMap(post) }
                     )
                 }
             }
@@ -193,14 +201,32 @@ fun SearchPage(
     }
 }
 
+// 內部 Transaction 封裝
+private fun performLeaveTransaction(db: FirebaseFirestore, postRef: com.google.firebase.firestore.DocumentReference, userUid: String?, onComplete: () -> Unit) {
+    if (userUid == null) return
+    db.runTransaction { transaction ->
+        val snapshot = transaction.get(postRef)
+        val currentParticipants = snapshot.get("participants") as? List<*> ?: emptyList<String>()
+        val newList = currentParticipants.filter { it != userUid }
+        
+        if (newList.isEmpty()) {
+            transaction.delete(postRef)
+        } else {
+            transaction.update(postRef, "participants", newList)
+        }
+    }.addOnSuccessListener { onComplete() }
+}
+
 @Composable
-fun PostCard(post: Post, onClick: () -> Unit) {
+fun PostCard(
+    post: Post, 
+    onClick: () -> Unit,
+    onLocationClick: () -> Unit = {}
+) {
     val isFull = post.maxParticipants > 0 && post.participants.size >= post.maxParticipants
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = if (isFull) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)) 
@@ -217,7 +243,29 @@ fun PostCard(post: Post, onClick: () -> Unit) {
             if (post.eventTime.isNotBlank()) {
                 Text(text = "時間: ${post.eventTime}", fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
             }
+            
+            if (post.locationName.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onLocationClick() }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(14.dp), tint = Color.Red)
+                    Text(
+                        text = post.locationName, 
+                        fontSize = 12.sp, 
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 post.tags.forEach { tag ->
                     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
