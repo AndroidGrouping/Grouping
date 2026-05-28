@@ -76,7 +76,11 @@ fun NewPostPage(paddingValues: PaddingValues) {
     var maxParticipants by remember { mutableStateOf("") }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var isPosting by remember { mutableStateOf(false) }
+
+    // 時間狀態
     var eventTime by remember { mutableStateOf("") }
+    var eventEndTime by remember { mutableStateOf("") }
+
     var showMapPicker by remember { mutableStateOf(false) }
 
     if (showMapPicker) {
@@ -88,6 +92,97 @@ fun NewPostPage(paddingValues: PaddingValues) {
                 selectedPlaceName = name
                 selectedFullAddress = addr
                 showMapPicker = false
+            }
+        )
+    }
+
+    // --- 連續時間選擇器邏輯 ---
+    val startCalendar = remember { Calendar.getInstance() }
+    val endCalendar = remember { Calendar.getInstance() }
+    val startDatePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+    val endDatePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+    val startTimePickerState = rememberTimePickerState()
+    val endTimePickerState = rememberTimePickerState()
+
+    var pickerStep by remember { mutableStateOf(0) } // 1:開始日期, 2:開始時間, 3:結束日期, 4:結束時間
+
+    if (pickerStep == 1) {
+        DatePickerDialog(
+            onDismissRequest = { pickerStep = 0 },
+            confirmButton = {
+                TextButton(onClick = {
+                    startCalendar.timeInMillis = startDatePickerState.selectedDateMillis ?: System.currentTimeMillis()
+                    pickerStep = 2
+                }) { Text("下一步") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickerStep = 0 }) { Text("取消") }
+            }
+        ) { DatePicker(state = startDatePickerState, title = { Text("選擇開始日期", modifier = Modifier.padding(16.dp)) }) }
+    } else if (pickerStep == 2) {
+        AlertDialog(
+            onDismissRequest = { pickerStep = 0 },
+            confirmButton = {
+                TextButton(onClick = {
+                    startCalendar.set(Calendar.HOUR_OF_DAY, startTimePickerState.hour)
+                    startCalendar.set(Calendar.MINUTE, startTimePickerState.minute)
+                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(startCalendar.time)
+
+                    // 預設結束日期為開始日期，結束時間預設為開始時間
+                    endDatePickerState.selectedDateMillis = startCalendar.timeInMillis
+                    pickerStep = 3
+                }) { Text("下一步") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickerStep = 1 }) { Text("上一步") }
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("選擇開始時間", fontWeight = FontWeight.Bold)
+                    TimePicker(state = startTimePickerState)
+                }
+            }
+        )
+    } else if (pickerStep == 3) {
+        DatePickerDialog(
+            onDismissRequest = { pickerStep = 0 },
+            confirmButton = {
+                TextButton(onClick = {
+                    endCalendar.timeInMillis = endDatePickerState.selectedDateMillis ?: startCalendar.timeInMillis
+                    pickerStep = 4
+                }) { Text("下一步") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickerStep = 2 }) { Text("上一步") }
+            }
+        ) { DatePicker(state = endDatePickerState, title = { Text("選擇結束日期", modifier = Modifier.padding(16.dp)) }) }
+    } else if (pickerStep == 4) {
+        AlertDialog(
+            onDismissRequest = { pickerStep = 0 },
+            confirmButton = {
+                TextButton(onClick = {
+                    val tempEndCalendar = endCalendar.clone() as Calendar
+                    tempEndCalendar.set(Calendar.HOUR_OF_DAY, endTimePickerState.hour)
+                    tempEndCalendar.set(Calendar.MINUTE, endTimePickerState.minute)
+
+                    // 驗證：結束時間不得早於或等於開始時間
+                    if (tempEndCalendar.timeInMillis <= startCalendar.timeInMillis) {
+                        Toast.makeText(context, "結束時間必須晚於開始時間", Toast.LENGTH_SHORT).show()
+                    } else {
+                        endCalendar.timeInMillis = tempEndCalendar.timeInMillis
+                        eventEndTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(endCalendar.time)
+                        pickerStep = 0
+                    }
+                }) { Text("確定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickerStep = 3 }) { Text("上一步") }
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("選擇結束時間", fontWeight = FontWeight.Bold)
+                    TimePicker(state = endTimePickerState)
+                }
             }
         )
     }
@@ -117,40 +212,39 @@ fun NewPostPage(paddingValues: PaddingValues) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        
-        val calendar = remember { Calendar.getInstance() }
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
-        val timePickerState = rememberTimePickerState()
-        var showDatePicker by remember { mutableStateOf(false) }
-        var showTimePicker by remember { mutableStateOf(false) }
 
-        if (showDatePicker) {
-            DatePickerDialog(onDismissRequest = { showDatePicker = false }, confirmButton = {
-                TextButton(onClick = { 
-                    calendar.timeInMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
-                    showDatePicker = false
-                    showTimePicker = true 
-                }) { Text("下一步") }
-            }) { DatePicker(state = datePickerState) }
-        }
-        if (showTimePicker) {
-            AlertDialog(onDismissRequest = { showTimePicker = false }, confirmButton = {
-                TextButton(onClick = {
-                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-                    calendar.set(Calendar.MINUTE, timePickerState.minute)
-                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(calendar.time)
-                    showTimePicker = false
-                }) { Text("確定") }
-            }, text = { Column { Text("選擇活動時間", fontWeight = FontWeight.Bold); TimePicker(state = timePickerState) } })
-        }
+        // 開始時間
+        OutlinedTextField(
+            value = eventTime,
+            onValueChange = { },
+            label = { Text("開始時間") },
+            modifier = Modifier.fillMaxWidth().clickable { pickerStep = 1 },
+            enabled = false,
+            colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline),
+            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+            shape = RoundedCornerShape(12.dp)
+        )
 
-        OutlinedTextField(value = eventTime, onValueChange = { }, label = { Text("活動時間") }, modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline), leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) }, shape = RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 結束時間
+        OutlinedTextField(
+            value = eventEndTime,
+            onValueChange = { },
+            label = { Text("結束時間") },
+            modifier = Modifier.fillMaxWidth().clickable { pickerStep = 3 },
+            enabled = false,
+            colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline),
+            leadingIcon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
+            shape = RoundedCornerShape(12.dp)
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(value = maxParticipants, onValueChange = { if (it.all { it.isDigit() }) maxParticipants = it }, label = { Text("人數上限 (0 代表不限)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("詳細內容") }, modifier = Modifier.fillMaxWidth().height(120.dp), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(text = "選擇標籤", fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,12 +253,12 @@ fun NewPostPage(paddingValues: PaddingValues) {
                 FilterChip(selected = selectedTags.contains(tag), onClick = { selectedTags = if (selectedTags.contains(tag)) selectedTags - tag else selectedTags + tag }, label = { Text(tag) })
             }
         }
-        
+
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = {
                 val user = auth.currentUser
-                if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank() || selectedFullAddress.isBlank()) {
+                if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank() || eventEndTime.isBlank() || selectedFullAddress.isBlank()) {
                     Toast.makeText(context, "請完整填寫資訊", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
@@ -174,11 +268,12 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     authorAvatarUrl = user.photoUrl?.toString() ?: "",
                     tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
                     locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
-                    eventTime = eventTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0
+                    eventTime = eventTime, eventEndTime = eventEndTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0,
+                    participants = listOf(user.uid)
                 )
                 db.collection("posts").add(post).addOnSuccessListener {
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
-                    title = ""; content = ""; eventTime = ""; maxParticipants = ""; selectedTags = emptySet()
+                    title = ""; content = ""; eventTime = ""; eventEndTime = ""; maxParticipants = ""; selectedTags = emptySet()
                     selectedPlaceName = "點擊選取活動位置"; selectedFullAddress = ""
                 }.addOnFailureListener { isPosting = false }
             },
@@ -207,22 +302,21 @@ fun LocationPickerDialog(
         Places.initialize(context, "AIzaSyBaQxDTVxo9IUh4UnzDHn-262sSY_OD_bA")
     }
     val placesClient = remember { Places.createClient(context) }
-    var sessionToken = remember { AutocompleteSessionToken.newInstance() }
+    var sessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
 
     var currentLatLng by remember { mutableStateOf(initialLatLng) }
     var currentName by remember { mutableStateOf("未命名位置") }
     var currentAddress by remember { mutableStateOf("請點擊地圖選取") }
-    var hasLocationPicked by remember { mutableStateOf(false) } // 控制紅點顯示
-    
+    var hasLocationPicked by remember { mutableStateOf(false) }
+
     var searchQuery by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf(listOf<AutocompletePrediction>()) }
     var isSearching by remember { mutableStateOf(false) }
-    
+
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialLatLng, 16f)
     }
 
-    // 啟動時：自動抓取目前位置並移鏡頭，但不自動下標籤 (移除紅點)
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
@@ -236,7 +330,7 @@ fun LocationPickerDialog(
 
     fun updateInfo(latLng: LatLng, overrideName: String? = null) {
         currentLatLng = latLng
-        hasLocationPicked = true // 標記為已選取
+        hasLocationPicked = true
         scope.launch(Dispatchers.IO) {
             try {
                 val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
@@ -279,7 +373,7 @@ fun LocationPickerDialog(
                             IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                             OutlinedTextField(
                                 value = searchQuery,
-                                onValueChange = { 
+                                onValueChange = {
                                     searchQuery = it
                                     if (it.length < 2) { suggestions = emptyList(); return@OutlinedTextField }
                                     isSearching = true
@@ -314,7 +408,7 @@ fun LocationPickerDialog(
                     modifier = Modifier.fillMaxSize(),
                     cameraPositionState = cameraPositionState,
                     onMapClick = { latLng -> updateInfo(latLng); suggestions = emptyList() },
-                    onPOIClick = { poi -> 
+                    onPOIClick = { poi ->
                         val request = FetchPlaceRequest.newInstance(poi.placeId, listOf(Place.Field.LAT_LNG, Place.Field.NAME, Place.Field.ADDRESS))
                         placesClient.fetchPlace(request).addOnSuccessListener { response ->
                             updateInfo(response.place.latLng ?: poi.latLng, response.place.name ?: poi.name)
