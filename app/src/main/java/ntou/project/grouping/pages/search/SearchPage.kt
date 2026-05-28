@@ -75,12 +75,12 @@ fun SearchPage(
         }
     }
 
-    // --- 解散活動確認對話框 ---
+    // --- 解散活動確認 ---
     if (showDisbandDialog && selectedPost != null) {
         AlertDialog(
             onDismissRequest = { showDisbandDialog = false },
             title = { Text("解散活動") },
-            text = { Text("你是最後一位參加者，退出將會自動解散此活動，是否確定？") },
+            text = { Text("你是此活動最後一位參加者，退出將會解散活動，是否確定？") },
             confirmButton = {
                 TextButton(onClick = {
                     val postRef = db.collection("posts").document(selectedPost!!.id)
@@ -91,7 +91,7 @@ fun SearchPage(
                     showDetailDialog = false
                     selectedPost = null
                 }) {
-                    Text("確定解散", color = MaterialTheme.colorScheme.error)
+                    Text("確定", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -100,7 +100,6 @@ fun SearchPage(
         )
     }
 
-    // --- 貼文詳情對話框 ---
     if (showDetailDialog && selectedPost != null) {
         val post = selectedPost!!
         val isAlreadyJoined = post.participants.contains(currentUser?.uid)
@@ -112,14 +111,19 @@ fun SearchPage(
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text(text = "發起人: ${post.authorName}", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
-                    Text(text = "活動時間: ${post.eventTime}", fontWeight = FontWeight.Medium)
+                    
+                    // 詳情視窗中的時間顯示
+                    EventTimeDisplay(start = post.eventTime, end = post.eventEndTime)
+                    
                     if (post.locationName.isNotBlank()) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { 
-                                showDetailDialog = false
-                                onNavigateToMap(post) 
-                            }
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .clickable { 
+                                    showDetailDialog = false
+                                    onNavigateToMap(post) 
+                                }
                         ) {
                             Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp), tint = Color.Red)
                             Text(text = post.locationName, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
@@ -201,12 +205,12 @@ fun SearchPage(
     }
 }
 
-// 內部 Transaction 封裝
 private fun performLeaveTransaction(db: FirebaseFirestore, postRef: com.google.firebase.firestore.DocumentReference, userUid: String?, onComplete: () -> Unit) {
     if (userUid == null) return
     db.runTransaction { transaction ->
         val snapshot = transaction.get(postRef)
-        val currentParticipants = snapshot.get("participants") as? List<*> ?: emptyList<String>()
+        @Suppress("UNCHECKED_CAST")
+        val currentParticipants = snapshot.get("participants") as? List<String> ?: emptyList()
         val newList = currentParticipants.filter { it != userUid }
         
         if (newList.isEmpty()) {
@@ -215,6 +219,38 @@ private fun performLeaveTransaction(db: FirebaseFirestore, postRef: com.google.f
             transaction.update(postRef, "participants", newList)
         }
     }.addOnSuccessListener { onComplete() }
+}
+
+@Composable
+fun EventTimeDisplay(start: String, end: String) {
+    if (start.isBlank()) return
+    
+    // 假設格式為 "yyyy/MM/dd HH:mm"
+    val startDate = if (start.length >= 10) start.substring(0, 10) else start
+    val endDate = if (end.length >= 10) end.substring(0, 10) else end
+    val startTime = if (start.length >= 16) start.substring(11) else ""
+    val endTime = if (end.length >= 16) end.substring(11) else ""
+
+    if (startDate == endDate || end.isBlank()) {
+        // 同一天
+        Text(
+            text = "時間: $startDate $startTime ${if(endTime.isNotEmpty()) "~ $endTime" else ""}",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.secondary
+        )
+    } else {
+        // 不同天：分兩排顯示
+        Column(modifier = Modifier.padding(vertical = 2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "起: ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Text(text = start, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Text(text = "止: ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Text(text = end, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
 }
 
 @Composable
@@ -240,14 +276,14 @@ fun PostCard(
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = post.title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            if (post.eventTime.isNotBlank()) {
-                Text(text = "時間: ${post.eventTime}", fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
-            }
             
+            // 使用自定義的時間顯示組件
+            EventTimeDisplay(start = post.eventTime, end = post.eventEndTime)
+
             if (post.locationName.isNotBlank()) {
                 Row(
                     modifier = Modifier
-                        .padding(top = 4.dp)
+                        .padding(top = 6.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .clickable { onLocationClick() }
                         .padding(vertical = 2.dp),
