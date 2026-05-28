@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -72,6 +73,14 @@ fun HomePage(
     var allPosts by remember { mutableStateOf(listOf<Post>()) }
     var selectedPostForDetail by remember { mutableStateOf<Post?>(null) }
     var currentUserLocation by remember { mutableStateOf<LatLng?>(null) }
+
+    // 分類篩選
+    val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
+    var selectedCategory by remember { mutableStateOf("全部") }
+    val filteredPosts = remember(allPosts, selectedCategory) {
+        if (selectedCategory == "全部") allPosts
+        else allPosts.filter { it.tags.contains(selectedCategory) }
+    }
 
     // 地圖是否已完成載入，作為動畫執行的前置條件
     var isMapLoaded by remember { mutableStateOf(false) }
@@ -154,11 +163,13 @@ fun HomePage(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
             properties = MapProperties(isMyLocationEnabled = locationPermissionGranted),
-            uiSettings = MapUiSettings(zoomControlsEnabled = false),
-            // 地圖 SDK 完成 attach 後才設旗標，確保 animate 有正確起點
+            uiSettings = MapUiSettings(
+                zoomControlsEnabled = false,
+                myLocationButtonEnabled = false  // 關閉內建按鈕，改用自訂按鈕避免被篩選列遮擋
+            ),
             onMapLoaded = { isMapLoaded = true }
         ) {
-            allPosts.forEach { post ->
+            filteredPosts.forEach { post ->
                 key(post.id) {
                     MarkerComposable(
                         state = MarkerState(position = LatLng(post.latitude, post.longitude)),
@@ -173,6 +184,58 @@ fun HomePage(
                         CategoryMarker(post)
                     }
                 }
+            }
+        }
+
+        // 分類篩選列（懸浮在地圖上方）
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(top = 8.dp, start = 8.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(categories) { category ->
+                FilterChip(
+                    selected = selectedCategory == category,
+                    onClick = {
+                        selectedCategory = category
+                        selectedPostForDetail = null
+                    },
+                    label = { Text(category) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
+
+        // 自訂「回到目前位置」按鈕，置於畫面右下角
+        if (locationPermissionGranted) {
+            FloatingActionButton(
+                onClick = {
+                    currentUserLocation?.let { loc ->
+                        scope.launch {
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngZoom(loc, 15f)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 16.dp, end = 16.dp),
+                containerColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.primary,
+                elevation = FloatingActionButtonDefaults.elevation(4.dp),
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MyLocation,
+                    contentDescription = "回到目前位置",
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
 
@@ -307,12 +370,7 @@ fun CategoryMarker(post: Post) {
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
             shadowElevation = 6.dp
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().padding(10.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = MaterialTheme.colorScheme.primary)
         }
         Canvas(modifier = Modifier.size(12.dp, 8.dp).offset(y = (-2).dp)) {
             val path = Path().apply {
