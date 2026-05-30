@@ -62,7 +62,10 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NewPostPage(paddingValues: PaddingValues) {
+fun NewPostPage(
+    paddingValues: PaddingValues,
+    onPostCreated: (Post) -> Unit = {}
+) {
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
@@ -271,8 +274,11 @@ fun NewPostPage(paddingValues: PaddingValues) {
                     eventTime = eventTime, eventEndTime = eventEndTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0,
                     participants = listOf(user.uid)
                 )
-                db.collection("posts").add(post).addOnSuccessListener {
+                db.collection("posts").add(post).addOnSuccessListener { docRef ->
                     isPosting = false; Toast.makeText(context, "發布成功！", Toast.LENGTH_SHORT).show()
+                    val finalPost = post.copy(id = docRef.id)
+                    onPostCreated(finalPost)
+
                     title = ""; content = ""; eventTime = ""; eventEndTime = ""; maxParticipants = ""; selectedTags = emptySet()
                     selectedPlaceName = "點擊選取活動位置"; selectedFullAddress = ""
                 }.addOnFailureListener { isPosting = false }

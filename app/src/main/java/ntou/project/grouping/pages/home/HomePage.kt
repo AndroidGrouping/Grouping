@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -50,6 +52,8 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ntou.project.grouping.models.Post
+import java.text.SimpleDateFormat
+import java.util.*
 
 @SuppressLint("MissingPermission")
 @Composable
@@ -77,12 +81,24 @@ fun HomePage(
     // 分類篩選
     val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
     var selectedCategory by remember { mutableStateOf("全部") }
+
+    // 過濾邏輯：分類 + 自動隱藏過期活動
     val filteredPosts = remember(allPosts, selectedCategory) {
-        if (selectedCategory == "全部") allPosts
-        else allPosts.filter { it.tags.contains(selectedCategory) }
+        val currentTime = System.currentTimeMillis()
+        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+
+        allPosts.filter { post ->
+            val matchesCategory = if (selectedCategory == "全部") true else post.tags.contains(selectedCategory)
+            val isNotExpired = if (post.eventEndTime.isNotBlank()) {
+                try {
+                    val endTime = sdf.parse(post.eventEndTime)?.time ?: Long.MAX_VALUE
+                    endTime > currentTime
+                } catch (e: Exception) { true }
+            } else { true }
+            matchesCategory && isNotExpired
+        }
     }
 
-    // 地圖是否已完成載入，作為動畫執行的前置條件
     var isMapLoaded by remember { mutableStateOf(false) }
 
     val activePost = remember(allPosts, selectedPostForDetail) {
@@ -90,14 +106,9 @@ fun HomePage(
     }
 
     var locationPermissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
     }
 
-    // 1. 取得目前位置
     LaunchedEffect(locationPermissionGranted) {
         if (locationPermissionGranted) {
             fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
@@ -106,7 +117,6 @@ fun HomePage(
         }
     }
 
-    // 2. 初始定位：僅在外部旗標尚未設定、無跳轉目標、且地圖已載入時執行一次
     LaunchedEffect(currentUserLocation, isMapLoaded) {
         if (currentUserLocation != null && !isInitialLocationSet && targetPost == null && isMapLoaded) {
             cameraPositionState.position = CameraPosition.fromLatLngZoom(currentUserLocation!!, 15f)
@@ -114,39 +124,25 @@ fun HomePage(
         }
     }
 
-    // 3. 跳轉動畫：等地圖載入完成後才執行，確保起點為上次鏡頭位置而非 (0,0)
     LaunchedEffect(targetPost, isMapLoaded) {
         if (targetPost != null && targetPost.latitude != 0.0 && isMapLoaded) {
             selectedPostForDetail = targetPost
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(targetPost.latitude, targetPost.longitude), 17f
-                )
-            )
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(LatLng(targetPost.latitude, targetPost.longitude), 17f))
             onTargetHandled()
             onInitialLocationSet()
         }
     }
 
-    // 權限請求
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         locationPermissionGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
     }
 
     LaunchedEffect(Unit) {
         if (!locationPermissionGranted) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
-    // Firestore 監聽
     DisposableEffect(Unit) {
         val firestoreListener = db.collection("posts").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
@@ -163,10 +159,7 @@ fun HomePage(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
             properties = MapProperties(isMyLocationEnabled = locationPermissionGranted),
-            uiSettings = MapUiSettings(
-                zoomControlsEnabled = false,
-                myLocationButtonEnabled = false  // 關閉內建按鈕，改用自訂按鈕避免被篩選列遮擋
-            ),
+            uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false),
             onMapLoaded = { isMapLoaded = true }
         ) {
             filteredPosts.forEach { post ->
@@ -176,66 +169,25 @@ fun HomePage(
                         title = post.title,
                         anchor = Offset(0.5f, 1f),
                         onClick = {
-                            selectedPostForDetail =
-                                if (selectedPostForDetail?.id == post.id) null else post
+                            selectedPostForDetail = if (selectedPostForDetail?.id == post.id) null else post
                             true
                         }
-                    ) {
-                        CategoryMarker(post)
-                    }
+                    ) { CategoryMarker(post) }
                 }
             }
         }
 
-        // 分類篩選列（懸浮在地圖上方）
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(top = 8.dp, start = 8.dp, end = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        // 分類篩選列
+        LazyRow(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 8.dp, start = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(categories) { category ->
-                FilterChip(
-                    selected = selectedCategory == category,
-                    onClick = {
-                        selectedCategory = category
-                        selectedPostForDetail = null
-                    },
-                    label = { Text(category) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = Color.White
-                    )
-                )
+                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; selectedPostForDetail = null }, label = { Text(category) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = Color.White))
             }
         }
 
-        // 自訂「回到目前位置」按鈕，置於畫面右下角
+        // 回到目前位置按鈕
         if (locationPermissionGranted) {
-            FloatingActionButton(
-                onClick = {
-                    currentUserLocation?.let { loc ->
-                        scope.launch {
-                            cameraPositionState.animate(
-                                CameraUpdateFactory.newLatLngZoom(loc, 15f)
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 16.dp, end = 16.dp),
-                containerColor = Color.White,
-                contentColor = MaterialTheme.colorScheme.primary,
-                elevation = FloatingActionButtonDefaults.elevation(4.dp),
-                shape = CircleShape
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MyLocation,
-                    contentDescription = "回到目前位置",
-                    modifier = Modifier.size(22.dp)
-                )
+            FloatingActionButton(onClick = { currentUserLocation?.let { scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(it, 15f)) } } }, modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 16.dp, end = 16.dp), containerColor = Color.White, contentColor = MaterialTheme.colorScheme.primary, elevation = FloatingActionButtonDefaults.elevation(4.dp), shape = CircleShape) {
+                Icon(imageVector = Icons.Default.MyLocation, contentDescription = "回到目前位置", modifier = Modifier.size(22.dp))
             }
         }
 
@@ -245,11 +197,9 @@ fun HomePage(
             val screenPosition = remember(projection, cameraPositionState.isMoving) {
                 projection?.toScreenLocation(LatLng(post.latitude, post.longitude))
             }
-
             screenPosition?.let { point ->
                 val xOffset = with(density) { point.x.toDp() - 110.dp }
                 val yOffset = with(density) { point.y.toDp() - 210.dp }
-
                 Box(modifier = Modifier.offset(x = xOffset, y = yOffset)) {
                     PostDetailBubble(
                         post = post,
@@ -257,11 +207,8 @@ fun HomePage(
                         onJoinClick = {
                             if (currentUser == null) return@PostDetailBubble
                             val postRef = db.collection("posts").document(post.id)
-                            if (post.participants.contains(currentUser.uid)) {
-                                postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
-                            } else {
-                                postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
-                            }
+                            if (post.participants.contains(currentUser.uid)) postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
+                            else postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
                         },
                         onClose = { selectedPostForDetail = null }
                     )
@@ -289,59 +236,20 @@ fun PostDetailBubble(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = post.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Text(text = post.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 IconButton(onClick = onClose, modifier = Modifier.size(20.dp)) {
                     Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray)
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "發起人: ${post.authorName}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "時間: ${post.eventTime}",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.DarkGray
-            )
+            Text(text = "發起人: ${post.authorName}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            Text(text = "時間: ${post.eventTime}", style = MaterialTheme.typography.labelSmall, color = Color.DarkGray)
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = post.content,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 16.sp
-            )
+            Text(text = post.content, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val isFull = post.maxParticipants > 0 && post.participants.size >= post.maxParticipants
-                Text(
-                    text = "人數: ${post.participants.size} / ${if (post.maxParticipants > 0) post.maxParticipants else "∞"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isFull) Color.Red else Color.Gray
-                )
-                Button(
-                    onClick = onJoinClick,
-                    modifier = Modifier.height(30.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = if (isJoined)
-                        ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    else
-                        ButtonDefaults.buttonColors()
-                ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "人數: ${post.participants.size}/${if(post.maxParticipants > 0) post.maxParticipants else "∞"}", style = MaterialTheme.typography.labelSmall)
+                Button(onClick = onJoinClick, modifier = Modifier.height(30.dp), contentPadding = PaddingValues(horizontal = 12.dp), shape = RoundedCornerShape(8.dp), colors = if (isJoined) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors()) {
                     Text(if (isJoined) "退出" else "參加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -361,24 +269,12 @@ fun CategoryMarker(post: Post) {
         post.tags.contains("學習") -> Icons.Default.School
         else -> Icons.Default.Groups
     }
-
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            modifier = Modifier.size(45.dp),
-            shape = CircleShape,
-            color = Color.White,
-            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-            shadowElevation = 6.dp
-        ) {
+        Surface(modifier = Modifier.size(45.dp), shape = CircleShape, color = Color.White, border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary), shadowElevation = 6.dp) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = MaterialTheme.colorScheme.primary)
         }
         Canvas(modifier = Modifier.size(12.dp, 8.dp).offset(y = (-2).dp)) {
-            val path = Path().apply {
-                moveTo(0f, 0f)
-                lineTo(size.width, 0f)
-                lineTo(size.width / 2, size.height)
-                close()
-            }
+            val path = Path().apply { moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width / 2, size.height); close() }
             drawPath(path, color = Color.White)
         }
     }

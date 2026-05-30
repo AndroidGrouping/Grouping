@@ -97,7 +97,13 @@ fun MainScreen(onLogout: () -> Unit) {
                     selectedBottomTab = "Home"
                 }
             )
-            "Add" -> NewPostPage(innerPadding)
+            "Add" -> NewPostPage(
+                paddingValues = innerPadding,
+                onPostCreated = { post ->
+                    mapTargetPost = post
+                    selectedBottomTab = "Home"
+                }
+            )
             "Schedule" -> SchedulePage(
                 paddingValues = innerPadding,
                 onNavigateToMap = { post ->
