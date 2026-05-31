@@ -70,6 +70,8 @@ fun SearchPage(
     }
 
     LaunchedEffect(searchQuery, selectedCategory, allPosts, friendIds) {
+        val sdf = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm", java.util.Locale.getDefault())
+        val now = java.util.Date()
         filteredPosts = allPosts.filter { post ->
             val matchesQuery = post.title.contains(searchQuery, ignoreCase = true) ||
                     post.content.contains(searchQuery, ignoreCase = true)
@@ -78,7 +80,10 @@ fun SearchPage(
                 "好友" -> post.authorId in friendIds
                 else -> post.tags.contains(selectedCategory)
             }
-            matchesQuery && matchesCategory
+            val notStarted = if (post.eventTime.isNotBlank()) {
+                try { sdf.parse(post.eventTime)?.after(now) ?: true } catch (e: Exception) { true }
+            } else { true }
+            matchesQuery && matchesCategory && notStarted
         }
     }
 
