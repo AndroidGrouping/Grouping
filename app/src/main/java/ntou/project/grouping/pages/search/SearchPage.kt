@@ -43,8 +43,18 @@ fun SearchPage(
     var expandedPostId by remember { mutableStateOf<String?>(null) }
     var selectedPost by remember { mutableStateOf<Post?>(null) }
     var showDisbandDialog by remember { mutableStateOf(false) }
+    var friendIds by remember { mutableStateOf(setOf<String>()) }
 
-    val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
+    val categories = listOf("全部", "好友", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
+
+    LaunchedEffect(currentUser?.uid) {
+        val uid = currentUser?.uid ?: return@LaunchedEffect
+        db.collection("users").document(uid).addSnapshotListener { snapshot, _ ->
+            @Suppress("UNCHECKED_CAST")
+            val friends = snapshot?.get("friends") as? List<String> ?: emptyList()
+            friendIds = friends.toSet()
+        }
+    }
 
     LaunchedEffect(Unit) {
         db.collection("posts")
@@ -59,11 +69,15 @@ fun SearchPage(
             }
     }
 
-    LaunchedEffect(searchQuery, selectedCategory, allPosts) {
+    LaunchedEffect(searchQuery, selectedCategory, allPosts, friendIds) {
         filteredPosts = allPosts.filter { post ->
             val matchesQuery = post.title.contains(searchQuery, ignoreCase = true) ||
                     post.content.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = if (selectedCategory == "全部") true else post.tags.contains(selectedCategory)
+            val matchesCategory = when (selectedCategory) {
+                "全部" -> true
+                "好友" -> post.authorId in friendIds
+                else -> post.tags.contains(selectedCategory)
+            }
             matchesQuery && matchesCategory
         }
     }
