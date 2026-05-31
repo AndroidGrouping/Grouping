@@ -77,18 +77,33 @@ fun HomePage(
     var allPosts by remember { mutableStateOf(listOf<Post>()) }
     var selectedPostForDetail by remember { mutableStateOf<Post?>(null) }
     var currentUserLocation by remember { mutableStateOf<LatLng?>(null) }
+    var friendIds by remember { mutableStateOf(setOf<String>()) }
 
     // 分類篩選
-    val categories = listOf("全部", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
+    val categories = listOf("全部", "好友", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
     var selectedCategory by remember { mutableStateOf("全部") }
 
+    // 載入好友清單
+    LaunchedEffect(currentUser?.uid) {
+        val uid = currentUser?.uid ?: return@LaunchedEffect
+        db.collection("users").document(uid).addSnapshotListener { snapshot, _ ->
+            @Suppress("UNCHECKED_CAST")
+            val friends = snapshot?.get("friends") as? List<String> ?: emptyList()
+            friendIds = friends.toSet()
+        }
+    }
+
     // 過濾邏輯：分類 + 自動隱藏過期活動
-    val filteredPosts = remember(allPosts, selectedCategory) {
+    val filteredPosts = remember(allPosts, selectedCategory, friendIds) {
         val currentTime = System.currentTimeMillis()
         val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
 
         allPosts.filter { post ->
-            val matchesCategory = if (selectedCategory == "全部") true else post.tags.contains(selectedCategory)
+            val matchesCategory = when (selectedCategory) {
+                "全部" -> true
+                "好友" -> post.authorId in friendIds
+                else -> post.tags.contains(selectedCategory)
+            }
             val isNotExpired = if (post.eventEndTime.isNotBlank()) {
                 try {
                     val endTime = sdf.parse(post.eventEndTime)?.time ?: Long.MAX_VALUE
