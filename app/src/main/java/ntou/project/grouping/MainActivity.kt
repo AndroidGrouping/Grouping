@@ -1,9 +1,12 @@
 package ntou.project.grouping
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -27,11 +30,22 @@ import ntou.project.grouping.pages.search.SearchPage
 import ntou.project.grouping.pages.user.UserPage
 import ntou.project.grouping.pages.user.FriendPage
 import ntou.project.grouping.ui.theme.GroupingTheme
+import ntou.project.grouping.utils.FcmTokenManager
 
 class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 使用者選擇後不需額外處理 */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Android 13+ 需要動態申請通知權限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         setContent {
             GroupingTheme {
                 var isLoggedIn by remember {
@@ -39,9 +53,14 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (isLoggedIn) {
+                    // 登入後同步 FCM Token
+                    FcmTokenManager.updateToken()
                     MainScreen(onLogout = { isLoggedIn = false })
                 } else {
-                    LoginPage(onLoginSuccess = { isLoggedIn = true })
+                    LoginPage(onLoginSuccess = {
+                        isLoggedIn = true
+                        FcmTokenManager.updateToken()
+                    })
                 }
             }
         }
