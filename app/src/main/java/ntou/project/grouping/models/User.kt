@@ -8,5 +8,6 @@ data class User(
     val bio: String = "",
     val friends: List<String> = emptyList(),
     val incomingRequests: List<String> = emptyList(), // 收到的好友請求 (UIDs)
-    val outgoingRequests: List<String> = emptyList()  // 送出的好友請求 (UIDs)
+    val outgoingRequests: List<String> = emptyList(), // 送出的好友請求 (UIDs)
+    val fcmToken: String = ""                         // 推播通知裝置 Token
 )
