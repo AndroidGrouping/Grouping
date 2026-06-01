@@ -1,4 +1,4 @@
-const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 admin.initializeApp();
 
@@ -49,6 +49,42 @@ exports.notifyOnJoin = onDocumentUpdated("posts/{postId}", async (event) => {
         },
         data: {
             postId: event.params.postId,
+        },
+        android: {
+            priority: "high",
+            notification: {
+                channelId: "grouping_notifications",
+                sound: "default",
+            },
+        },
+    });
+});
+
+/**
+ * 當 kickNotifications/{docId} 被建立時，
+ * 發送推播通知給被踢出的使用者，並刪除該通知文件。
+ */
+exports.notifyOnKick = onDocumentCreated("kickNotifications/{docId}", async (event) => {
+    const data = event.data.data();
+    if (!data) return null;
+
+    const { kickedUid, postTitle, authorName } = data;
+
+    // 取得被踢使用者的 FCM Token
+    const kickedUserDoc = await admin.firestore()
+        .collection("users").doc(kickedUid).get();
+    const fcmToken = kickedUserDoc.data()?.fcmToken;
+
+    // 刪除通知文件（避免重複觸發）
+    await event.data.ref.delete();
+
+    if (!fcmToken) return null;
+
+    return admin.messaging().send({
+        token: fcmToken,
+        notification: {
+            title: "你已被移出活動",
+            body: `${authorName} 將你從「${postTitle}」中移除`,
         },
         android: {
             priority: "high",

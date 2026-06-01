@@ -58,7 +58,8 @@ fun ExpandablePostCard(
     onExpandClick: () -> Unit,
     onLocationClick: () -> Unit,
     onPrimaryAction: (() -> Unit)? = null,
-    onEditClick: (() -> Unit)? = null
+    onEditClick: (() -> Unit)? = null,
+    onKickParticipant: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -169,7 +170,11 @@ fun ExpandablePostCard(
 
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("參加人員", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            ParticipantDetailList(post.participants)
+                            ParticipantDetailList(
+                                participantIds = post.participants,
+                                authorId = post.authorId,
+                                onKickParticipant = onKickParticipant
+                            )
 
                             Spacer(modifier = Modifier.height(16.dp))
                             Row(
@@ -319,7 +324,11 @@ fun EventTimeDisplay(start: String, end: String) {
 }
 
 @Composable
-fun ParticipantDetailList(participantIds: List<String>) {
+fun ParticipantDetailList(
+    participantIds: List<String>,
+    authorId: String = "",
+    onKickParticipant: ((String) -> Unit)? = null
+) {
     val db = FirebaseFirestore.getInstance()
     var users by remember { mutableStateOf(listOf<User>()) }
 
@@ -336,16 +345,36 @@ fun ParticipantDetailList(participantIds: List<String>) {
             Text("目前尚無人參加", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 4.dp))
         } else {
             users.forEach { user ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                    Surface(modifier = Modifier.size(24.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-                        AsyncImage(
-                            model = user.photoUrl.ifEmpty { "https://ui-avatars.com/api/?name=${user.displayName}" },
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop
-                        )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Surface(modifier = Modifier.size(24.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                            AsyncImage(
+                                model = user.photoUrl.ifEmpty { "https://ui-avatars.com/api/?name=${user.displayName}" },
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(user.displayName, fontSize = 14.sp)
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(user.displayName, fontSize = 14.sp)
+                    // 踢人按鈕：只對非發起人顯示
+                    if (onKickParticipant != null && user.uid != authorId) {
+                        IconButton(
+                            onClick = { onKickParticipant(user.uid) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.PersonRemove,
+                                contentDescription = "踢出",
+                                tint = Color.Red,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
