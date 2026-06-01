@@ -159,7 +159,23 @@ fun SchedulePage(
                                     userLocation = userLocation, showQuitButton = true, currentUid = currentUser?.uid,
                                     onExpandClick = { expandedPostId = if (expandedPostId == post.id) null else post.id },
                                     onLocationClick = { onNavigateToMap(post) },
-                                    onQuit = { handleQuit(post, currentUser?.uid, db, context, onDisband = { postToDisband = post; showDisbandDialog = true }, onExpand = { expandedPostId = null }) }
+                                    onQuit = { handleQuit(post, currentUser?.uid, db, context, onDisband = { postToDisband = post; showDisbandDialog = true }, onExpand = { expandedPostId = null }) },
+                                    onKickParticipant = { kickUid ->
+                                        db.collection("posts").document(post.id)
+                                            .update("participants", com.google.firebase.firestore.FieldValue.arrayRemove(kickUid))
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "已將該成員移除", Toast.LENGTH_SHORT).show()
+                                                // 寫入踢人通知，觸發 Cloud Function 發送推播
+                                                db.collection("kickNotifications").add(
+                                                    mapOf(
+                                                        "kickedUid" to kickUid,
+                                                        "postTitle" to post.title,
+                                                        "authorName" to post.authorName,
+                                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                                    )
+                                                )
+                                            }
+                                    }
                                 )
                             }
                         }
@@ -230,7 +246,8 @@ fun ExpandableScheduleCard(
     currentUid: String?,
     onExpandClick: () -> Unit,
     onLocationClick: () -> Unit,
-    onQuit: () -> Unit
+    onQuit: () -> Unit,
+    onKickParticipant: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
@@ -327,7 +344,8 @@ fun ExpandableScheduleCard(
             onExpandClick = onExpandClick,
             onLocationClick = onLocationClick,
             onPrimaryAction = onQuit,
-            onEditClick = if (showQuitButton) { { isEditing = true } } else null
+            onEditClick = if (showQuitButton) { { isEditing = true } } else null,
+            onKickParticipant = onKickParticipant
         )
     }
 }
