@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -77,14 +78,35 @@ fun NewPostPage(
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var maxParticipants by remember { mutableStateOf("") }
+    var isUnlimited by remember { mutableStateOf(false) }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var isPosting by remember { mutableStateOf(false) }
+
+    val titleLimit = 30
+    val contentLimit = 500
+
+    // 驗證狀態
+    var titleError by remember { mutableStateOf(false) }
+    var contentError by remember { mutableStateOf(false) }
+    var locationError by remember { mutableStateOf(false) }
+    var timeError by remember { mutableStateOf(false) }
+    var endTimeError by remember { mutableStateOf(false) }
 
     // 時間狀態
     var eventTime by remember { mutableStateOf("") }
     var eventEndTime by remember { mutableStateOf("") }
 
     var showMapPicker by remember { mutableStateOf(false) }
+
+    val isFormValid by remember {
+        derivedStateOf {
+            title.isNotBlank() && title.length <= titleLimit &&
+                    content.isNotBlank() && content.length <= contentLimit &&
+                    selectedFullAddress.isNotBlank() &&
+                    eventTime.isNotBlank() &&
+                    eventEndTime.isNotBlank()
+        }
+    }
 
     if (showMapPicker) {
         LocationPickerDialog(
@@ -94,6 +116,7 @@ fun NewPostPage(
                 selectedLatLng = latLng
                 selectedPlaceName = name
                 selectedFullAddress = addr
+                locationError = false
                 showMapPicker = false
             }
         )
@@ -102,8 +125,32 @@ fun NewPostPage(
     // --- 連續時間選擇器邏輯 ---
     val startCalendar = remember { Calendar.getInstance() }
     val endCalendar = remember { Calendar.getInstance() }
-    val startDatePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
-    val endDatePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+
+    val selectableDates = remember {
+        object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                calendar.timeInMillis = System.currentTimeMillis()
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                return utcTimeMillis >= calendar.timeInMillis
+            }
+            override fun isSelectableYear(year: Int): Boolean {
+                return year >= Calendar.getInstance().get(Calendar.YEAR)
+            }
+        }
+    }
+
+    val startDatePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = System.currentTimeMillis(),
+        selectableDates = selectableDates
+    )
+    val endDatePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = System.currentTimeMillis(),
+        selectableDates = selectableDates
+    )
     val startTimePickerState = rememberTimePickerState()
     val endTimePickerState = rememberTimePickerState()
 
@@ -127,13 +174,23 @@ fun NewPostPage(
             onDismissRequest = { pickerStep = 0 },
             confirmButton = {
                 TextButton(onClick = {
-                    startCalendar.set(Calendar.HOUR_OF_DAY, startTimePickerState.hour)
-                    startCalendar.set(Calendar.MINUTE, startTimePickerState.minute)
-                    eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(startCalendar.time)
+                    val tempStartCalendar = startCalendar.clone() as Calendar
+                    tempStartCalendar.set(Calendar.HOUR_OF_DAY, startTimePickerState.hour)
+                    tempStartCalendar.set(Calendar.MINUTE, startTimePickerState.minute)
+                    tempStartCalendar.set(Calendar.SECOND, 0)
+                    tempStartCalendar.set(Calendar.MILLISECOND, 0)
 
-                    // 預設結束日期為開始日期，結束時間預設為開始時間
-                    endDatePickerState.selectedDateMillis = startCalendar.timeInMillis
-                    pickerStep = 3
+                    if (tempStartCalendar.timeInMillis < System.currentTimeMillis()) {
+                        Toast.makeText(context, "開始時間不能早於現在", Toast.LENGTH_SHORT).show()
+                    } else {
+                        startCalendar.timeInMillis = tempStartCalendar.timeInMillis
+                        eventTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(startCalendar.time)
+                        timeError = false
+
+                        // 預設結束日期為開始日期，結束時間預設為開始時間
+                        endDatePickerState.selectedDateMillis = startCalendar.timeInMillis
+                        pickerStep = 3
+                    }
                 }) { Text("下一步") }
             },
             dismissButton = {
@@ -174,6 +231,7 @@ fun NewPostPage(
                     } else {
                         endCalendar.timeInMillis = tempEndCalendar.timeInMillis
                         eventEndTime = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(endCalendar.time)
+                        endTimeError = false
                         pickerStep = 0
                     }
                 }) { Text("確定") }
@@ -194,24 +252,59 @@ fun NewPostPage(
         Text(text = "建立新活動", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(20.dp))
 
-        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("活動標題") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+        OutlinedTextField(
+            value = title,
+            onValueChange = {
+                if (it.length <= titleLimit) {
+                    title = it
+                    if (it.isNotBlank()) titleError = false
+                }
+            },
+            label = { Text("活動標題") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            isError = titleError,
+            supportingText = {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    if (titleError) {
+                        Text("活動標題不能為空", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    Text("${title.length}/$titleLimit", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
         Card(
             onClick = { showMapPicker = true },
-            modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(2.dp, RoundedCornerShape(12.dp))
+                .let { if (locationError) it.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp)) else it },
             shape = RoundedCornerShape(12.dp),
+            border = if (locationError) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
         ) {
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Red, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (locationError) MaterialTheme.colorScheme.error else Color.Red, modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text(text = selectedFullAddress.ifBlank { "點擊開啟地圖選擇地點" }, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
+                    Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = if (locationError) MaterialTheme.colorScheme.error else Color.Unspecified)
+                    Text(text = selectedFullAddress.ifBlank { "點擊開啟地圖選擇地點" }, fontSize = 12.sp, color = if (locationError) MaterialTheme.colorScheme.error else Color.Gray, maxLines = 1)
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
             }
+        }
+        if (locationError) {
+            Text(
+                text = "請選擇活動位置",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -223,9 +316,19 @@ fun NewPostPage(
             label = { Text("開始時間") },
             modifier = Modifier.fillMaxWidth().clickable { pickerStep = 1 },
             enabled = false,
-            colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline),
-            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-            shape = RoundedCornerShape(12.dp)
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = if (timeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = if (timeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                disabledLabelColor = if (timeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, tint = if (timeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) },
+            shape = RoundedCornerShape(12.dp),
+            isError = timeError,
+            supportingText = {
+                if (timeError) {
+                    Text("請選擇有效的開始時間", color = MaterialTheme.colorScheme.error)
+                }
+            }
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -237,15 +340,77 @@ fun NewPostPage(
             label = { Text("結束時間") },
             modifier = Modifier.fillMaxWidth().clickable { pickerStep = 3 },
             enabled = false,
-            colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline),
-            leadingIcon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
-            shape = RoundedCornerShape(12.dp)
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = if (endTimeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = if (endTimeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                disabledLabelColor = if (endTimeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            leadingIcon = { Icon(Icons.Default.EventAvailable, contentDescription = null, tint = if (endTimeError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) },
+            shape = RoundedCornerShape(12.dp),
+            isError = endTimeError,
+            supportingText = {
+                if (endTimeError) {
+                    Text("結束時間需晚於開始時間", color = MaterialTheme.colorScheme.error)
+                }
+            }
         )
 
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(value = maxParticipants, onValueChange = { if (it.all { it.isDigit() }) maxParticipants = it }, label = { Text("人數上限 (0 代表不限)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "不限人數", fontWeight = FontWeight.Bold)
+            Switch(
+                checked = isUnlimited,
+                onCheckedChange = {
+                    isUnlimited = it
+                    if (it) maxParticipants = "0" else if (maxParticipants == "0") maxParticipants = ""
+                }
+            )
+        }
+
+        AnimatedVisibility(visible = !isUnlimited) {
+            Column {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = maxParticipants,
+                    onValueChange = { if (it.all { char -> char.isDigit() }) maxParticipants = it },
+                    label = { Text("人數上限") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("詳細內容") }, modifier = Modifier.fillMaxWidth().height(120.dp), shape = RoundedCornerShape(12.dp))
+        OutlinedTextField(
+            value = content,
+            onValueChange = {
+                if (it.length <= contentLimit) {
+                    content = it
+                    if (it.isNotBlank()) contentError = false
+                }
+            },
+            label = { Text("詳細內容") },
+            modifier = Modifier.fillMaxWidth().height(120.dp),
+            shape = RoundedCornerShape(12.dp),
+            isError = contentError,
+            supportingText = {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    if (contentError) {
+                        Text("活動內容不能為空", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    Text("${content.length}/$contentLimit", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(text = "選擇標籤", fontWeight = FontWeight.Bold)
@@ -261,8 +426,16 @@ fun NewPostPage(
         Button(
             onClick = {
                 val user = auth.currentUser
-                if (user == null || title.isBlank() || content.isBlank() || eventTime.isBlank() || eventEndTime.isBlank() || selectedFullAddress.isBlank()) {
-                    Toast.makeText(context, "請完整填寫資訊", Toast.LENGTH_SHORT).show()
+                
+                // 這裡其實因為按鈕 enabled 邏輯，大部分錯誤狀況應該不會觸發，但保留作為保險
+                titleError = title.isBlank()
+                contentError = content.isBlank()
+                locationError = selectedFullAddress.isBlank()
+                timeError = eventTime.isBlank()
+                endTimeError = eventEndTime.isBlank()
+
+                if (user == null || !isFormValid) {
+                    if (user == null) Toast.makeText(context, "請先登入", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
                 isPosting = true
@@ -271,7 +444,8 @@ fun NewPostPage(
                     authorAvatarUrl = user.photoUrl?.toString() ?: "",
                     tags = selectedTags.toList(), latitude = selectedLatLng.latitude, longitude = selectedLatLng.longitude,
                     locationName = if (selectedFullAddress.contains(selectedPlaceName)) selectedFullAddress else "$selectedPlaceName ($selectedFullAddress)",
-                    eventTime = eventTime, eventEndTime = eventEndTime, maxParticipants = maxParticipants.toIntOrNull() ?: 0,
+                    eventTime = eventTime, eventEndTime = eventEndTime, 
+                    maxParticipants = if (isUnlimited) 0 else (maxParticipants.toIntOrNull() ?: 0),
                     participants = listOf(user.uid)
                 )
                 db.collection("posts").add(post).addOnSuccessListener { docRef ->
@@ -279,13 +453,13 @@ fun NewPostPage(
                     val finalPost = post.copy(id = docRef.id)
                     onPostCreated(finalPost)
 
-                    title = ""; content = ""; eventTime = ""; eventEndTime = ""; maxParticipants = ""; selectedTags = emptySet()
+                    title = ""; content = ""; eventTime = ""; eventEndTime = ""; maxParticipants = ""; isUnlimited = false; selectedTags = emptySet()
                     selectedPlaceName = "點擊選取活動位置"; selectedFullAddress = ""
                 }.addOnFailureListener { isPosting = false }
             },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(12.dp),
-            enabled = !isPosting
+            enabled = !isPosting && isFormValid
         ) {
             if (isPosting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp)) else Text("確認發布", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
