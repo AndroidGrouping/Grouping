@@ -242,15 +242,29 @@ fun ExpandablePostCard(
                             Text("詳細內容", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             Text(post.content, fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
                             Spacer(modifier = Modifier.height(8.dp))
-                            val participantText = if (post.maxParticipants > 0) "${post.participants.size} / ${post.maxParticipants}" else "${post.participants.size} 人"
-                            Text("目前人數: $participantText", fontWeight = FontWeight.Bold, color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                enabled = !isFull || isAlreadyJoined,
-                                onClick = { onPrimaryAction?.invoke() },
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(if (isAlreadyJoined) "取消參加" else if (isFull) "人數已滿" else "我要參加")
+                                val participantText = if (post.maxParticipants > 0) "${post.participants.size} / ${post.maxParticipants}" else "${post.participants.size} 人"
+                                Text("目前人數: $participantText", fontWeight = FontWeight.Bold, color = if (isFull) Color.Red else MaterialTheme.colorScheme.secondary)
+                                if (!isFull || isAlreadyJoined) {
+                                    IconButton(onClick = { onPrimaryAction?.invoke() }) {
+                                        Icon(
+                                            imageVector = if (isAlreadyJoined) Icons.AutoMirrored.Filled.ExitToApp else Icons.Default.PersonAdd,
+                                            contentDescription = if (isAlreadyJoined) "取消參加" else "我要參加",
+                                            tint = if (isAlreadyJoined) Color.Red else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.PersonOff,
+                                        contentDescription = "人數已滿",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.padding(12.dp).size(24.dp)
+                                    )
+                                }
                             }
                         }
                     }
