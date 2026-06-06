@@ -428,10 +428,12 @@ fun DisbandConfirmDialog(
     onDismiss: () -> Unit,
     onComplete: () -> Unit
 ) {
+    val message = "你是最後一位參加者，退出將會自動刪除此活動，確定要解散嗎？"
+                  
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("是否解散活動？") },
-        text = { Text("你是最後一位參加者，退出將會自動刪除此活動，確定要解散嗎？") },
+        text = { Text(message) },
         confirmButton = {
             TextButton(onClick = {
                 performLeaveTransaction(db, db.collection("posts").document(post.id), currentUid) {

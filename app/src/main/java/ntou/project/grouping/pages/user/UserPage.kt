@@ -1,6 +1,7 @@
 package ntou.project.grouping.pages.user
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -37,6 +37,8 @@ import ntou.project.grouping.models.User
 @Composable
 fun UserPage(
     paddingValues: PaddingValues,
+    pinkTheme: Boolean = false,
+    onThemeChange: (Boolean) -> Unit = {},
     onNavigateToFriends: () -> Unit,
     onNavigateToSchedule: () -> Unit,
     onLogout: () -> Unit
@@ -85,26 +87,21 @@ fun UserPage(
         return
     }
 
-    val primary = MaterialTheme.colorScheme.primary
-    val headerGradient = Brush.verticalGradient(
-        colors = listOf(
-            Color(primary.red * 0.65f, primary.green * 0.65f, primary.blue * 0.65f), // 加深
-            primary
-        )
-    )
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
+            .background(surface)
             .verticalScroll(rememberScrollState())
     ) {
         // ── Header ──────────────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                .background(headerGradient)
+                .background(surface)
                 .padding(top = 32.dp, bottom = 28.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -113,7 +110,7 @@ fun UserPage(
                 Surface(
                     modifier = Modifier
                         .size(100.dp)
-                        .border(3.dp, Color.White, CircleShape),
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
@@ -126,26 +123,26 @@ fun UserPage(
                         )
                     } else {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(Icons.Default.Person, null, modifier = Modifier.size(52.dp), tint = Color.White)
+                            Icon(Icons.Default.Person, null, modifier = Modifier.size(52.dp), tint = onSurface.copy(alpha = 0.6f))
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
                     text = userData?.displayName ?: "未設定名稱",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = onSurface
                 )
 
                 if (!userData?.bio.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = userData?.bio ?: "",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 14.sp,
+                        color = onSurface.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -153,19 +150,22 @@ fun UserPage(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // 統計列
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StatItem(count = userData?.friends?.size ?: 0, label = "好友")
-                    Box(modifier = Modifier.width(1.dp).height(36.dp).background(Color.White.copy(alpha = 0.4f)))
-                    StatItem(count = postCount, label = "發起活動")
+                    StatItem(count = userData?.friends?.size ?: 0, label = "好友", color = onSurface)
+                    VerticalDivider(modifier = Modifier.height(24.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    StatItem(count = postCount, label = "發起活動", color = onSurface)
                 }
             }
         }
+
+        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -234,11 +234,19 @@ fun UserPage(
                 }
             } else {
                 // 選單
+                var themeExpanded by remember { mutableStateOf(false) }
                 Text("選單", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 10.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     MenuButton(text = "編輯個人資料", icon = Icons.Default.Edit, onClick = { isEditing = true })
                     MenuButton(text = "好友", icon = Icons.Default.People, onClick = onNavigateToFriends)
                     MenuButton(text = "我的行程", icon = Icons.Default.DateRange, onClick = onNavigateToSchedule)
+                    // 主題
+                    ThemeMenuButton(
+                        pinkTheme = pinkTheme,
+                        expanded = themeExpanded,
+                        onToggle = { themeExpanded = !themeExpanded },
+                        onThemeChange = { pink -> onThemeChange(pink); themeExpanded = false }
+                    )
                     // 電子郵件（純顯示，不可點擊）
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -282,13 +290,106 @@ fun UserPage(
 }
 
 @Composable
-private fun StatItem(count: Int, label: String) {
+private fun StatItem(count: Int, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = count.toString(), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(text = label, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
+        Text(text = count.toString(), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = color)
+        Text(text = label, fontSize = 12.sp, color = color.copy(alpha = 0.5f))
     }
 }
 
+
+@Composable
+private fun ThemeMenuButton(
+    pinkTheme: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onThemeChange: (Boolean) -> Unit
+) {
+    val currentLabel = if (pinkTheme) "珊瑚粉" else "黑白"
+    val currentColor = if (pinkTheme) Color(0xFFE8617A) else Color.Black
+
+    Surface(
+        onClick = onToggle,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Column {
+            // 主列（仿 MenuButton 樣式）
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentColor.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Palette, null, tint = currentColor, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = "主題",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(currentLabel, fontSize = 13.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.LightGray
+                )
+            }
+
+            // 展開選項
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf(false to "黑白", true to "珊瑚粉").forEach { (isPink, label) ->
+                        val color = if (isPink) Color(0xFFE8617A) else Color.Black
+                        val selected = pinkTheme == isPink
+                        Surface(
+                            onClick = { onThemeChange(isPink) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) color.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                width = if (selected) 2.dp else 1.dp,
+                                color = if (selected) color else MaterialTheme.colorScheme.outlineVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(color))
+                                Text(
+                                    text = label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) color else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (selected) Icon(Icons.Default.Check, null, tint = color, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun MenuButton(

@@ -292,10 +292,10 @@ fun NewPostPage(
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (locationError) MaterialTheme.colorScheme.error else Color.Red, modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = if (locationError) MaterialTheme.colorScheme.error else Color.Unspecified)
-                    Text(text = selectedFullAddress.ifBlank { "點擊開啟地圖選擇地點" }, fontSize = 12.sp, color = if (locationError) MaterialTheme.colorScheme.error else Color.Gray, maxLines = 1)
+                    Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = if (locationError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    Text(text = selectedFullAddress.ifBlank { "點擊開啟地圖選擇地點" }, fontSize = 12.sp, color = if (locationError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (locationError) {
@@ -626,7 +626,7 @@ fun LocationPickerDialog(
                         Text(text = "選取的地點", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = currentName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                        Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = Color.Gray, maxLines = 2)
+                        Text(text = currentAddress, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { onLocationConfirm(currentLatLng, currentName, currentAddress) },
