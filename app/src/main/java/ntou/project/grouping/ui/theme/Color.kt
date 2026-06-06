@@ -22,3 +22,11 @@ val TabUnselected = Color(0xFFADBAC7)
 // 保持舊的以相容，但標註為過時或逐步替換
 val MainBlue = PrimaryColor
 val MainYellow = AccentColor
+
+// 深色模式鎖定主色（珊瑚粉）
+val DarkPrimary   = Color(0xFFF28B82)
+val DarkOnPrimary = Color(0xFF690005)
+
+// 淺色模式鎖定主色（暖棕紅）
+val LightPrimary   = Color(0xFF7D4637)
+val LightOnPrimary = Color(0xFFFFFFFF)
