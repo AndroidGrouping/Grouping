@@ -289,7 +289,7 @@ fun NewPostPage(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
         ) {
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (locationError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (locationError) MaterialTheme.colorScheme.error else Color.Red, modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = selectedPlaceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = if (locationError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)

@@ -32,30 +32,42 @@ import ntou.project.grouping.pages.user.FriendPage
 import ntou.project.grouping.ui.theme.GroupingTheme
 import ntou.project.grouping.utils.FcmTokenManager
 
+const val PREFS_NAME = "grouping_prefs"
+const val PREF_PINK_THEME = "pink_theme"
+
 class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 使用者選擇後不需額外處理 */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Android 13+ 需要動態申請通知權限
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
         setContent {
-            GroupingTheme {
+            var pinkTheme by remember { mutableStateOf(prefs.getBoolean(PREF_PINK_THEME, false)) }
+
+            GroupingTheme(pinkTheme = pinkTheme) {
                 var isLoggedIn by remember {
                     mutableStateOf(FirebaseAuth.getInstance().currentUser != null)
                 }
 
                 if (isLoggedIn) {
-                    // 登入後同步 FCM Token
                     FcmTokenManager.updateToken()
-                    MainScreen(onLogout = { isLoggedIn = false })
+                    MainScreen(
+                        pinkTheme = pinkTheme,
+                        onThemeChange = { pink ->
+                            pinkTheme = pink
+                            prefs.edit().putBoolean(PREF_PINK_THEME, pink).apply()
+                        },
+                        onLogout = { isLoggedIn = false }
+                    )
                 } else {
                     LoginPage(onLoginSuccess = {
                         isLoggedIn = true
@@ -68,23 +80,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(onLogout: () -> Unit) {
+fun MainScreen(
+    pinkTheme: Boolean = false,
+    onThemeChange: (Boolean) -> Unit = {},
+    onLogout: () -> Unit
+) {
     var selectedBottomTab by remember { mutableStateOf("Home") }
-    // 追蹤從 搜尋 或 行程 頁面點擊跳轉的地點
     var mapTargetPost by remember { mutableStateOf<Post?>(null) }
 
-    // 提升鏡頭位置狀態，用以紀錄 HomePage 最後的位置
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(25.1502, 121.7761), 15f)
     }
 
-    // 提升初次定位旗標：確保切換頁面回來後不會重設鏡頭位置
     var isInitialLocationSet by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopNavigationBar()
-        },
+        topBar = { TopNavigationBar() },
         bottomBar = {
             BottomNavigationBar(
                 selectedItem = if (selectedBottomTab == "Friends") "Profile" else selectedBottomTab,
@@ -108,8 +119,6 @@ fun MainScreen(onLogout: () -> Unit) {
             "Search" -> SearchPage(
                 paddingValues = innerPadding,
                 onNavigateToMap = { post ->
-                    // 跳轉前將鏡頭起點固定為離開 Home 時的最後位置，
-                    // 讓 HomePage 的動畫從該位置出發飛向目標活動
                     val lastPosition = cameraPositionState.position
                     cameraPositionState.position = lastPosition
                     mapTargetPost = post
@@ -126,8 +135,6 @@ fun MainScreen(onLogout: () -> Unit) {
             "Schedule" -> SchedulePage(
                 paddingValues = innerPadding,
                 onNavigateToMap = { post ->
-                    // 跳轉前將鏡頭起點固定為離開 Home 時的最後位置，
-                    // 讓 HomePage 的動畫從該位置出發飛向目標活動
                     val lastPosition = cameraPositionState.position
                     cameraPositionState.position = lastPosition
                     mapTargetPost = post
@@ -136,6 +143,8 @@ fun MainScreen(onLogout: () -> Unit) {
             )
             "Profile" -> UserPage(
                 paddingValues = innerPadding,
+                pinkTheme = pinkTheme,
+                onThemeChange = onThemeChange,
                 onNavigateToFriends = { selectedBottomTab = "Friends" },
                 onNavigateToSchedule = { selectedBottomTab = "Schedule" },
                 onLogout = onLogout

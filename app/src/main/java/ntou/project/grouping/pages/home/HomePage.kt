@@ -306,9 +306,10 @@ fun CategoryMarker(post: Post) {
         post.tags.contains("學習") -> Icons.Default.School
         else -> Icons.Default.Groups
     }
+    val eventColor = MaterialTheme.colorScheme.tertiary
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(modifier = Modifier.size(45.dp), shape = CircleShape, color = Color.White, border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary), shadowElevation = 6.dp) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = MaterialTheme.colorScheme.primary)
+        Surface(modifier = Modifier.size(45.dp), shape = CircleShape, color = Color.White, border = BorderStroke(2.dp, eventColor), shadowElevation = 6.dp) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = eventColor)
         }
         Canvas(modifier = Modifier.size(12.dp, 8.dp).offset(y = (-2).dp)) {
             val path = Path().apply { moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width / 2, size.height); close() }

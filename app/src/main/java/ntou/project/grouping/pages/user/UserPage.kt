@@ -1,6 +1,7 @@
 package ntou.project.grouping.pages.user
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,8 @@ import ntou.project.grouping.models.User
 @Composable
 fun UserPage(
     paddingValues: PaddingValues,
+    pinkTheme: Boolean = false,
+    onThemeChange: (Boolean) -> Unit = {},
     onNavigateToFriends: () -> Unit,
     onNavigateToSchedule: () -> Unit,
     onLogout: () -> Unit
@@ -231,11 +234,19 @@ fun UserPage(
                 }
             } else {
                 // 選單
+                var themeExpanded by remember { mutableStateOf(false) }
                 Text("選單", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 10.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     MenuButton(text = "編輯個人資料", icon = Icons.Default.Edit, onClick = { isEditing = true })
                     MenuButton(text = "好友", icon = Icons.Default.People, onClick = onNavigateToFriends)
                     MenuButton(text = "我的行程", icon = Icons.Default.DateRange, onClick = onNavigateToSchedule)
+                    // 主題
+                    ThemeMenuButton(
+                        pinkTheme = pinkTheme,
+                        expanded = themeExpanded,
+                        onToggle = { themeExpanded = !themeExpanded },
+                        onThemeChange = { pink -> onThemeChange(pink); themeExpanded = false }
+                    )
                     // 電子郵件（純顯示，不可點擊）
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -286,6 +297,99 @@ private fun StatItem(count: Int, label: String, color: Color) {
     }
 }
 
+
+@Composable
+private fun ThemeMenuButton(
+    pinkTheme: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onThemeChange: (Boolean) -> Unit
+) {
+    val currentLabel = if (pinkTheme) "珊瑚粉" else "黑白"
+    val currentColor = if (pinkTheme) Color(0xFFE8617A) else Color.Black
+
+    Surface(
+        onClick = onToggle,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Column {
+            // 主列（仿 MenuButton 樣式）
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentColor.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Palette, null, tint = currentColor, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = "主題",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(currentLabel, fontSize = 13.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.LightGray
+                )
+            }
+
+            // 展開選項
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf(false to "黑白", true to "珊瑚粉").forEach { (isPink, label) ->
+                        val color = if (isPink) Color(0xFFE8617A) else Color.Black
+                        val selected = pinkTheme == isPink
+                        Surface(
+                            onClick = { onThemeChange(isPink) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) color.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                width = if (selected) 2.dp else 1.dp,
+                                color = if (selected) color else MaterialTheme.colorScheme.outlineVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(color))
+                                Text(
+                                    text = label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) color else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (selected) Icon(Icons.Default.Check, null, tint = color, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun MenuButton(
