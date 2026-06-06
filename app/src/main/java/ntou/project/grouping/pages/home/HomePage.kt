@@ -51,6 +51,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ntou.project.grouping.components.DisbandConfirmDialog
 import ntou.project.grouping.models.Post
 import java.text.SimpleDateFormat
 import java.util.*
@@ -78,6 +79,9 @@ fun HomePage(
     var selectedPostForDetail by remember { mutableStateOf<Post?>(null) }
     var currentUserLocation by remember { mutableStateOf<LatLng?>(null) }
     var friendIds by remember { mutableStateOf(setOf<String>()) }
+
+    var showDisbandDialog by remember { mutableStateOf(false) }
+    var postToDisband by remember { mutableStateOf<Post?>(null) }
 
     // 分類篩選
     val categories = listOf("全部", "好友", "羽球", "唱歌", "運動", "美食", "桌遊", "旅遊", "學習")
@@ -170,6 +174,16 @@ fun HomePage(
     }
 
     Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+        if (showDisbandDialog && postToDisband != null) {
+            DisbandConfirmDialog(
+                post = postToDisband!!,
+                db = db,
+                currentUid = currentUser?.uid,
+                onDismiss = { showDisbandDialog = false },
+                onComplete = { showDisbandDialog = false; postToDisband = null; selectedPostForDetail = null }
+            )
+        }
+
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
@@ -221,9 +235,17 @@ fun HomePage(
                         currentUserUid = currentUser?.uid,
                         onJoinClick = {
                             if (currentUser == null) return@PostDetailBubble
-                            val postRef = db.collection("posts").document(post.id)
-                            if (post.participants.contains(currentUser.uid)) postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
-                            else postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
+                            if (post.authorId == currentUser.uid) {
+                                postToDisband = post
+                                showDisbandDialog = true
+                            } else if (post.participants.size <= 1) {
+                                postToDisband = post
+                                showDisbandDialog = true
+                            } else {
+                                val postRef = db.collection("posts").document(post.id)
+                                if (post.participants.contains(currentUser.uid)) postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
+                                else postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
+                            }
                         },
                         onClose = { selectedPostForDetail = null }
                     )

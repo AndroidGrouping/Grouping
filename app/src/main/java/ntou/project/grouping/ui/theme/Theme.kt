@@ -15,16 +15,16 @@ import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme = darkColorScheme(
     primary          = DarkPrimary,
     onPrimary        = DarkOnPrimary,
-    secondary        = SecondaryColor,
-    onSecondary      = Color.White,
-    tertiary         = AccentColor,
-    onTertiary       = Color.Black,
-    background       = Color(0xFF1C1B1F),
-    onBackground     = Color(0xFFE6E1E5),
-    surface          = Color(0xFF2B2930),
-    onSurface        = Color(0xFFE6E1E5),
-    surfaceVariant   = Color(0xFF49454F),
-    onSurfaceVariant = Color(0xFFCAC4D0),
+    secondary        = Color(0xFFBDBDBD), // Light Gray for dark mode secondary
+    onSecondary      = Color.Black,
+    tertiary         = Color(0xFF757575), // Medium Gray
+    onTertiary       = Color.White,
+    background       = Color(0xFF000000), // Pure Black background
+    onBackground     = Color(0xFFFFFFFF),
+    surface          = Color(0xFF121212), // Near Black surface
+    onSurface        = Color(0xFFFFFFFF),
+    surfaceVariant   = Color(0xFF212121),
+    onSurfaceVariant = Color(0xFFBDBDBD),
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -38,13 +38,15 @@ private val LightColorScheme = lightColorScheme(
     onTertiary = TextPrimary,
     onBackground = TextPrimary,
     onSurface = TextPrimary,
+    surfaceVariant = Color(0xFFF5F5F5), // Light Gray surface variant
+    onSurfaceVariant = Color(0xFF757575),
 )
 
 @Composable
 fun GroupingTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Set default to false to prioritize the B&W look
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
