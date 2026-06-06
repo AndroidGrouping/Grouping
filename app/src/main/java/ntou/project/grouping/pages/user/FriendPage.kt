@@ -275,12 +275,17 @@ fun RequestItem(
 
 @Composable
 private fun FriendListItem(user: User, isExpanded: Boolean, onExpandClick: () -> Unit, onDeleteClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().animateContentSize().clickable { onExpandClick() }, shape = RoundedCornerShape(12.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize().clickable { onExpandClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
+    ) {
         Column {
             ListItem(
                 headlineContent = { Text(user.displayName, fontWeight = FontWeight.SemiBold) },
                 supportingContent = { Text(user.email, fontSize = 12.sp) },
-                leadingContent = { UserAvatar(user.photoUrl, user.displayName, size = 48) }
+                leadingContent = { UserAvatar(user.photoUrl, user.displayName, size = 48) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
             if (isExpanded) {
                 Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
