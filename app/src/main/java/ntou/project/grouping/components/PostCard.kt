@@ -200,18 +200,6 @@ fun ExpandablePostCard(
                                         userLocation?.let { loc ->
                                             scope.launch {
                                                 isCalculating = true
-                                                currentMode = TravelMode.BICYCLING
-                                                estimatedTime = NavigationMethods.getTravelTime(context, loc, LatLng(post.latitude, post.longitude), TravelMode.BICYCLING)
-                                                isCalculating = false
-                                            }
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.TwoWheeler, "機車", tint = if (currentMode == TravelMode.BICYCLING) MaterialTheme.colorScheme.primary else Color.Gray)
-                                    }
-                                    IconButton(onClick = {
-                                        userLocation?.let { loc ->
-                                            scope.launch {
-                                                isCalculating = true
                                                 currentMode = TravelMode.WALKING
                                                 estimatedTime = NavigationMethods.getTravelTime(context, loc, LatLng(post.latitude, post.longitude), TravelMode.WALKING)
                                                 isCalculating = false
@@ -219,6 +207,12 @@ fun ExpandablePostCard(
                                         }
                                     }) {
                                         Icon(Icons.Default.DirectionsWalk, "步行", tint = if (currentMode == TravelMode.WALKING) MaterialTheme.colorScheme.primary else Color.Gray)
+                                    }
+                                    IconButton(onClick = {
+                                        val uri = android.net.Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${post.latitude},${post.longitude}&travelmode=driving")
+                                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
+                                    }) {
+                                        Icon(Icons.Default.Navigation, "導航", tint = Color.Gray)
                                     }
                                     if (isCalculating) {
                                         CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(start = 8.dp), strokeWidth = 2.dp)
