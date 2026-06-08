@@ -235,16 +235,21 @@ fun HomePage(
                         currentUserUid = currentUser?.uid,
                         onJoinClick = {
                             if (currentUser == null) return@PostDetailBubble
-                            if (post.authorId == currentUser.uid) {
-                                postToDisband = post
-                                showDisbandDialog = true
-                            } else if (post.participants.size <= 1) {
-                                postToDisband = post
-                                showDisbandDialog = true
+                            val isJoined = post.participants.contains(currentUser.uid)
+                            
+                            if (isJoined) {
+                                // 退出邏輯
+                                if (post.authorId == currentUser.uid || post.participants.size <= 1) {
+                                    postToDisband = post
+                                    showDisbandDialog = true
+                                } else {
+                                    db.collection("posts").document(post.id)
+                                        .update("participants", FieldValue.arrayRemove(currentUser.uid))
+                                }
                             } else {
-                                val postRef = db.collection("posts").document(post.id)
-                                if (post.participants.contains(currentUser.uid)) postRef.update("participants", FieldValue.arrayRemove(currentUser.uid))
-                                else postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
+                                // 參加邏輯
+                                db.collection("posts").document(post.id)
+                                    .update("participants", FieldValue.arrayUnion(currentUser.uid))
                             }
                         },
                         onClose = { selectedPostForDetail = null }

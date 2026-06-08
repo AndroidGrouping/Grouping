@@ -131,7 +131,8 @@ fun SearchPage(
                             val isJoined = post.participants.contains(currentUser.uid)
                             val postRef = db.collection("posts").document(post.id)
                             if (isJoined) {
-                                if (post.participants.size == 1) {
+                                // 退出邏輯
+                                if (post.authorId == currentUser.uid || post.participants.size == 1) {
                                     selectedPost = post
                                     showDisbandDialog = true
                                 } else {
@@ -140,6 +141,7 @@ fun SearchPage(
                                     }
                                 }
                             } else {
+                                // 參加邏輯
                                 postRef.update("participants", FieldValue.arrayUnion(currentUser.uid))
                                     .addOnSuccessListener { Toast.makeText(context, "報名成功！", Toast.LENGTH_SHORT).show() }
                             }

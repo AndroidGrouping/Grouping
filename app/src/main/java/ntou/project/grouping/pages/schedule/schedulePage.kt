@@ -224,7 +224,8 @@ private fun handleQuit(
     onExpand: () -> Unit
 ) {
     if (currentUid == null) return
-    if (post.participants.size <= 1) {
+    // 如果是主揪或是最後一個人，才跳解散提醒
+    if (post.authorId == currentUid || post.participants.size <= 1) {
         onDisband()
     } else {
         val postRef = db.collection("posts").document(post.id)
